@@ -15,7 +15,7 @@ from folium.plugins import FastMarkerCluster
 @st.cache_data
 def load_data():
     return gpd.read_parquet(
-        r"Z:/Projects/COJ/05_Codes/AEP_comparison_dashboard/assets/sacs_aep_comparison_for_dashboard.parquet"
+        "https://github.com/akhalid-twi/coj-aep-comparison-dashboard/raw/refs/heads/main/assets/sacs_aep_comparison_for_dashboard.parquet"
     )
 
 gdf = load_data()
