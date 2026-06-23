@@ -8,17 +8,25 @@ from streamlit_folium import st_folium
 import numpy as np
 from sklearn.neighbors import BallTree
 from folium.plugins import FastMarkerCluster
+from io import BytesIO
+import urllib.request
 
 # -----------------------------
 # 1. Load Data (Cached)
 # -----------------------------
 @st.cache_data
 def load_data():
-    return gpd.read_parquet(
-        "https://github.com/akhalid-twi/coj-aep-comparison-dashboard/raw/refs/heads/main/assets/sacs_aep_comparison_for_dashboard.parquet"
-    )
+    url = "https://github.com/akhalid-twi/coj-aep-comparison-dashboard/raw/refs/heads/main/assets/sacs_aep_comparison_for_dashboard.parquet"
+    
+    # 1. Fetch the raw file bytes over HTTP securely
+    with urllib.request.urlopen(url) as response:
+        file_bytes = response.read()
+        
+    # 2. Wrap those bytes in a virtual file handler and pass it to geopandas
+    return gpd.read_parquet(BytesIO(file_bytes))
 
 gdf = load_data()
+
 
 # -----------------------------
 # 2. Spatial Index Tree (Cached)
