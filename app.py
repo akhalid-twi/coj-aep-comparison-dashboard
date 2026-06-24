@@ -8,24 +8,71 @@ from streamlit_folium import st_folium
 import numpy as np
 from sklearn.neighbors import BallTree
 from folium.plugins import FastMarkerCluster
-from io import BytesIO
 import urllib.request
+from io import BytesIO
+
 
 # -----------------------------
-# 1. Load Data (Cached)
+# Load Data from GitHub (Cached)
 # -----------------------------
 @st.cache_data
 def load_data():
-    url = "https://github.com/akhalid-twi/coj-aep-comparison-dashboard/raw/refs/heads/main/assets/sacs_aep_comparison_for_dashboard.parquet"
-    
-    # 1. Fetch the raw file bytes over HTTP securely
-    with urllib.request.urlopen(url) as response:
-        file_bytes = response.read()
-        
-    # 2. Wrap those bytes in a virtual file handler and pass it to geopandas
-    return gpd.read_parquet(BytesIO(file_bytes))
 
-gdf = load_data()
+    url_main = "https://github.com/akhalid-twi/coj-aep-comparison-dashboard/raw/main/assets/sacs_aep_comparison_for_dashboard.parquet"
+
+    url_ras = "https://github.com/akhalid-twi/coj-aep-comparison-dashboard/raw/main/assets/sacs_ras_tc_aep.parquet"
+
+    # --- load main dataset ---
+    with urllib.request.urlopen(url_main) as response:
+        gdf_main = gpd.read_parquet(BytesIO(response.read()))
+
+    # --- load RAS dataset ---
+    with urllib.request.urlopen(url_ras) as response:
+        gdf_ras = gpd.read_parquet(BytesIO(response.read()))
+
+    return gdf_main, gdf_ras
+
+
+# -----------------------------
+# Merge dicts
+# -----------------------------
+
+def merge_aep(main_json, ras_json):
+    aep_main = json.loads(main_json)
+
+    if pd.isna(ras_json):
+        return json.dumps(aep_main)
+
+    try:
+        aep_ras = json.loads(ras_json)
+        aep_main.update(aep_ras)
+    except:
+        pass
+
+    return json.dumps(aep_main)
+
+# -----------------------------
+# Merge on cell_id
+# -----------------------------
+
+gdf_ras_lookup = gdf_ras.set_index("sacs_id")
+
+merged_aep = []
+
+for idx, row in gdf_main.iterrows():
+    sacs_id = str(row.sacs_id)
+    
+    if sacs_id in gdf_ras_lookup.index:
+        ras_json = gdf_ras_lookup.loc[sacs_id]["aep"]
+    else:
+        ras_json = None
+
+    merged_aep.append(merge_aep(row["aep"], ras_json))
+
+gdf_main["aep"] = merged_aep
+
+# This becomes your working dataset
+gdf = gdf_main
 
 
 # -----------------------------
@@ -162,15 +209,21 @@ if map_data and map_data.get("last_clicked"):
 selected_row = gdf.iloc[st.session_state.selected_idx]
 aep_data = json.loads(selected_row["aep"])
 
+
 def filter_aep(aep_dict, option):
     if option == "All":
         return aep_dict
-    return {k: v for k, v in aep_dict.items() if k == "SACS" or option in k}
+
+    return {
+        k: v for k, v in aep_dict.items()
+        if k in ["SACS", "SACS_RAS"] or option in k
+    }
 
 aep_filtered = filter_aep(aep_data, scenario_option)
 
 COLOR_MAP = {
     "SACS": dict(color="#000000", dash="solid", width=3, marker="circle"),
+    "SACS_RAS": dict(color="#FF0000", dash="solid", width=3, marker="x"),
     "Combined-Base": dict(color="#E69F00", dash="solid", marker="circle"),
     "Combined-SLR1": dict(color="#F0B64D", dash="solid", marker="square"),
     "Combined-SLR4": dict(color="#FFD27F", dash="solid", marker="diamond"),
@@ -182,17 +235,27 @@ COLOR_MAP = {
     "TC-OS-SLR4": dict(color="#E6C3E6", dash="solid", marker="diamond"),
 }
 
+
+LABEL_MAP = {
+    "SACS": "SACS_ADCIRC_CC_Full_set",
+    "SACS_RAS": "SACS_RAS_TC_506_storms"
+}
+
+
 with col_plot:
     st.markdown(f"**Cell:** {selected_row.cell_id}  \n**SACS ID:** {selected_row.sacs_id}")
 
     fig = go.Figure()
     for label, data in aep_filtered.items():
+        
+        display_label = LABEL_MAP.get(label, label)
+        
         x = sorted([float(k) for k in data.keys()])
         y = [float(data[str(k)]) if str(k) in data else float(data[k]) for k in x]
         style = COLOR_MAP.get(label, dict(color="gray", dash="solid", marker="circle"))
 
         fig.add_trace(go.Scatter(
-            x=x, y=y, mode="lines+markers", name=label,
+            x=x, y=y, mode="lines+markers", name=display_label,
             line=dict(color=style["color"], dash=style["dash"], width=style.get("width", 2)),
             marker=dict(size=5, symbol=style["marker"])
         ))
@@ -206,7 +269,7 @@ with col_plot:
                   tickvals=[2,5,10,25,50,100,250,500,1000,2000], gridcolor="#E0E6ED"),
         yaxis=dict(title="WSE (ft)", gridcolor="#E0E6ED"),
         height=600, margin=dict(l=10, r=10, t=40, b=10),
-        legend=dict(title="Scenario", orientation="h", y=1.02, x=1, xanchor="right"),
+        legend=dict(title="Scenario", orientation="h", y=1.02, x=0.1, xanchor="left"),
     )
 
     st.plotly_chart(fig, use_container_width=True)
