@@ -32,6 +32,7 @@ def load_data():
 
     return gdf_main, gdf_ras
 
+gdf_main, gdf_ras = load_data()
 
 # -----------------------------
 # Merge dicts
