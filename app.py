@@ -222,38 +222,24 @@ def filter_aep(aep_dict, option):
 
 aep_filtered = filter_aep(aep_data, scenario_option)
 
-# COLOR_MAP = {
-#     "SACS": dict(color="#000000", dash="solid", width=3, marker="circle"),
-#     "SACS_RAS": dict(color="#FF0000", dash="solid", width=3, marker="x"),
-#     "Combined-Base": dict(color="#E69F00", dash="solid", marker="circle"),
-#     "Combined-SLR1": dict(color="#F0B64D", dash="solid", marker="square"),
-#     "Combined-SLR4": dict(color="#FFD27F", dash="solid", marker="diamond"),
-#     "NTC-Syn-Base": dict(color="#0072B2", dash="solid", marker="circle"),
-#     "NTC-Syn-SLR1": dict(color="#56B4E9", dash="solid", marker="square"),
-#     "NTC-Syn-SLR4": dict(color="#8ECae6", dash="solid", marker="diamond"),
-#     "TC-OS-Base": dict(color="#CC79A7", dash="solid", marker="circle"),
-#     "TC-OS-SLR1": dict(color="#DDA0DD", dash="solid", marker="square"),
-#     "TC-OS-SLR4": dict(color="#E6C3E6", dash="solid", marker="diamond"),
-# }
-
 COLOR_MAP = {
     "SACS": dict(color="#000000", dash="solid", width=4, marker="circle"),
     "SACS_RAS": dict(color="#666666", dash="solid", width=3, marker="x"),
 
-    # NTC (lightest visual weight)
-    "NTC-Syn-Base": dict(color="#D6EAF8", dash="solid", marker="circle"),
-    "NTC-Syn-SLR1": dict(color="#85C1E9", dash="solid", marker="square"),
-    "NTC-Syn-SLR4": dict(color="#2E86C1", dash="solid", marker="diamond"),
+    # NTC (light green family)
+    "NTC-Syn-Base": dict(color="#D9F0D3", dash="solid", marker="circle"),
+    "NTC-Syn-SLR1": dict(color="#A6DBA0", dash="solid", marker="square"),
+    "NTC-Syn-SLR4": dict(color="#5AAE61", dash="solid", marker="diamond"),
 
-    # TC (medium visual weight)
-    "TC-OS-Base": dict(color="#FAD7A0", dash="solid", marker="circle"),
-    "TC-OS-SLR1": dict(color="#F5B041", dash="solid", marker="square"),
-    "TC-OS-SLR4": dict(color="#D35400", dash="solid", marker="diamond"),
+    # TC (blue family)
+    "TC-OS-Base": dict(color="#C6DBEF", dash="solid", marker="circle"),
+    "TC-OS-SLR1": dict(color="#6BAED6", dash="solid", marker="square"),
+    "TC-OS-SLR4": dict(color="#2171B5", dash="solid", marker="diamond"),
 
-    # Combined (strongest visual weight)
-    "Combined-Base": dict(color="#A9DFBF", dash="solid", marker="circle"),
-    "Combined-SLR1": dict(color="#27AE60", dash="solid", marker="square"),
-    "Combined-SLR4": dict(color="#145A32", dash="solid", marker="diamond"),
+    # Combined (strong orange/red family)
+    "Combined-Base": dict(color="#FDBB84", dash="solid", marker="circle"),
+    "Combined-SLR1": dict(color="#FC8D59", dash="solid", marker="square"),
+    "Combined-SLR4": dict(color="#D7301F", dash="solid", marker="diamond"),
 }
 
 LABEL_MAP = {
