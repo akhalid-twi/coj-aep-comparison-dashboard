@@ -224,17 +224,23 @@ aep_filtered = filter_aep(aep_data, scenario_option)
 
 
 COLOR_MAP = {
-    "NTC-Syn-Base":  dict(color="#32CD32"),
-    "NTC-Syn-SLR1":  dict(color="#228B22"),
-    "NTC-Syn-SLR4":  dict(color="#006400"),
+    "SACS": dict(color="#000000", dash="solid", width=4),
+    "SACS_RAS": dict(color="#666666", dash="solid", width=3),
 
-    "TC-OS-Base":    dict(color="#1E90FF"),
-    "TC-OS-SLR1":    dict(color="#0066CC"),
-    "TC-OS-SLR4":    dict(color="#003D99"),
+    # NTC (green family)
+    "NTC-Syn-Base": dict(color="#4CAF50", dash="dot", width=2),
+    "NTC-Syn-SLR1": dict(color="#2E7D32", dash="dot", width=3),
+    "NTC-Syn-SLR4": dict(color="#1B5E20", dash="dot", width=4),
 
-    "Combined-Base": dict(color="#FF8C00"),
-    "Combined-SLR1": dict(color="#FF4500"),
-    "Combined-SLR4": dict(color="#B22222"),
+    # TC (blue family)
+    "TC-OS-Base": dict(color="#42A5F5", dash="dash", width=2),
+    "TC-OS-SLR1": dict(color="#1E88E5", dash="dash", width=3),
+    "TC-OS-SLR4": dict(color="#0D47A1", dash="dash", width=4),
+
+    # Combined (orange/red family)
+    "Combined-Base": dict(color="#FFB74D", dash="solid", width=2),
+    "Combined-SLR1": dict(color="#F57C00", dash="solid", width=3),
+    "Combined-SLR4": dict(color="#D84315", dash="solid", width=4),
 }
 
 
