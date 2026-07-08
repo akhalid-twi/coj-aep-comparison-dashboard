@@ -238,9 +238,9 @@ COLOR_MAP = {
     "TC-OS-SLR4": dict(color="#0D47A1", dash="dash", width=4,marker=None),
 
     # Combined (orange/red family)
-    "Combined-Base": dict(color="#FFB74D", dash="solid", width=2,marker='None'),
-    "Combined-SLR1": dict(color="#F57C00", dash="solid", width=3,marker='None'),
-    "Combined-SLR4": dict(color="#D84315", dash="solid", width=4,marker='None'),
+    "Combined-Base": dict(color="#FFB74D", dash="solid", width=2,marker=None),
+    "Combined-SLR1": dict(color="#F57C00", dash="solid", width=3,marker=None),
+    "Combined-SLR4": dict(color="#D84315", dash="solid", width=4,marker=None),
 }
 
 
