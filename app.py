@@ -263,7 +263,7 @@ with col_plot:
         style = COLOR_MAP.get(label, dict(color="gray", dash="solid", marker="circle"))
 
         fig.add_trace(go.Scatter(
-            x=x, y=y, mode="lines+markers", name=display_label,
+            x=x, y=y, mode="lines", name=display_label,
             line=dict(color=style["color"], dash=style["dash"], width=style.get("width", 2)),
             marker=dict(size=5, symbol=style["marker"])
         ))
