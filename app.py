@@ -259,7 +259,7 @@ aep_filtered = filter_aep(aep_data, scenario_option)
 
 
 COLOR_MAP = {
-    "SACS": dict(color="#000000", dash="solid", width=4,marker=None),
+    "SACS": dict(color="#000000", dash="solid", width=3,marker=None),
     "SACS_RAS": dict(color="#666666", dash="solid", width=3,marker=None),
 
     # NTC (green family)
@@ -280,7 +280,7 @@ COLOR_MAP = {
         
     # Bias corrected
     "Combined-BiasCorrected": dict(
-        color="#8B0000",
+        color="#FF0000",
         dash="longdash",
         width=5
     ),
@@ -292,7 +292,7 @@ COLOR_MAP = {
 LABEL_MAP = {
     "SACS": "SACS_ADCIRC_CC_Full_set",
     "SACS_RAS": "SACS_RAS_TC_506_storms",
-    "Combined-BiasCorrected": "Combined Base (Bias Corrected)"
+    "Combined-BiasCorrected": "Combined-Base (Bias Corrected)"
 }
 
 
