@@ -230,19 +230,29 @@ aep_data = json.loads(selected_row["aep"])
 
 
 def filter_aep(aep_dict, option):
+
+    # Show everything
     if option == "All":
         return aep_dict
 
+    filtered = {}
 
-    return {
-        k: v for k, v in aep_dict.items()
-        if k in [
-            "SACS",
-            "SACS_RAS",
-            "Combined-BiasCorrected"
-        ]
-        or option in k
-    }
+    for k, v in aep_dict.items():
+
+        # Always keep reference datasets
+        if k in ["SACS", "SACS_RAS"]:
+            filtered[k] = v
+
+        # Only show bias-corrected data for Base view
+        elif k == "Combined-BiasCorrected":
+            if option == "Base":
+                filtered[k] = v
+
+        # Normal scenario filtering
+        elif option in k:
+            filtered[k] = v
+
+    return filtered
 
 
 aep_filtered = filter_aep(aep_data, scenario_option)
