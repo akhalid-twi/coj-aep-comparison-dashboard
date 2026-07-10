@@ -22,17 +22,23 @@ def load_data():
 
     url_ras = "https://github.com/akhalid-twi/coj-aep-comparison-dashboard/raw/main/assets/sacs_ras_tc_aep.parquet"
 
+    url_bc = "https://github.com/akhalid-twi/coj-aep-comparison-dashboard/raw/main/assets/combined_bias_corrected_aep.parquet"
+
     # --- load main dataset ---
     with urllib.request.urlopen(url_main) as response:
         gdf_main = gpd.read_parquet(BytesIO(response.read()))
 
+    # --- load bias corrected dataset ---
+    with urllib.request.urlopen(url_main) as response:
+        gdf_bc = gpd.read_parquet(BytesIO(response.read()))
+        
     # --- load RAS dataset ---
     with urllib.request.urlopen(url_ras) as response:
         gdf_ras = gpd.read_parquet(BytesIO(response.read()))
 
-    return gdf_main, gdf_ras
+    return gdf_main, gdf_ras, gdf_bc
 
-gdf_main, gdf_ras = load_data()
+gdf_main, gdf_ras, gdf_bc  = load_data()
 
 # -----------------------------
 # Merge dicts
@@ -57,22 +63,34 @@ def merge_aep(main_json, ras_json):
 # -----------------------------
 
 gdf_ras_lookup = gdf_ras.set_index("sacs_id")
+gdf_bc_lookup = gdf_bc.set_index("point_id")
 
 merged_aep = []
 
 for idx, row in gdf_main.iterrows():
-    sacs_id = str(row.sacs_id)
-    
-    if sacs_id in gdf_ras_lookup.index:
-        ras_json = gdf_ras_lookup.loc[sacs_id]["aep"]
-    else:
-        ras_json = None
 
-    merged_aep.append(merge_aep(row["aep"], ras_json))
+    sacs_id = str(row.sacs_id)
+
+    aep_json = row["aep"]
+
+    # Merge RAS TC dataset
+    if sacs_id in gdf_ras_lookup.index:
+        aep_json = merge_aep(
+            aep_json,
+            gdf_ras_lookup.loc[sacs_id]["aep"]
+        )
+
+    # Merge bias corrected dataset
+    if sacs_id in gdf_bc_lookup.index:
+        aep_json = merge_aep(
+            aep_json,
+            gdf_bc_lookup.loc[sacs_id]["aep"]
+        )
+
+    merged_aep.append(aep_json)
 
 gdf_main["aep"] = merged_aep
 
-# This becomes your working dataset
 gdf = gdf_main
 
 
@@ -215,10 +233,17 @@ def filter_aep(aep_dict, option):
     if option == "All":
         return aep_dict
 
+
     return {
         k: v for k, v in aep_dict.items()
-        if k in ["SACS", "SACS_RAS"] or option in k
+        if k in [
+            "SACS",
+            "SACS_RAS",
+            "Combined-BiasCorrected"
+        ]
+        or option in k
     }
+
 
 aep_filtered = filter_aep(aep_data, scenario_option)
 
@@ -241,13 +266,25 @@ COLOR_MAP = {
     "Combined-Base": dict(color="#FFB74D", dash="solid", width=2,marker=None),
     "Combined-SLR1": dict(color="#F57C00", dash="solid", width=3,marker=None),
     "Combined-SLR4": dict(color="#D84315", dash="solid", width=4,marker=None),
+
+        
+    # Bias corrected
+    "Combined-BiasCorrected": dict(
+        color="#8B0000",
+        dash="longdash",
+        width=5
+    ),
+
 }
+
 
 
 LABEL_MAP = {
     "SACS": "SACS_ADCIRC_CC_Full_set",
-    "SACS_RAS": "SACS_RAS_TC_506_storms"
+    "SACS_RAS": "SACS_RAS_TC_506_storms",
+    "Combined-BiasCorrected": "Combined Base (Bias Corrected)"
 }
+
 
 
 with col_plot:
@@ -263,9 +300,15 @@ with col_plot:
         style = COLOR_MAP.get(label, dict(color="gray", dash="solid", marker="circle"))
 
         fig.add_trace(go.Scatter(
-            x=x, y=y, mode="lines", name=display_label,
-            line=dict(color=style["color"], dash=style["dash"], width=style.get("width", 2)),
-            marker=dict(size=5, symbol=style["marker"])
+            x=x,
+            y=y,
+            mode="lines",
+            name=display_label,
+            line=dict(
+                color=style["color"],
+                dash=style["dash"],
+                width=style.get("width", 2)
+            )
         ))
 
     for rp in [10, 100, 500, 1000]:
