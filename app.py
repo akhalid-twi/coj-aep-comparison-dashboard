@@ -29,7 +29,7 @@ def load_data():
         gdf_main = gpd.read_parquet(BytesIO(response.read()))
 
     # --- load bias corrected dataset ---
-    with urllib.request.urlopen(url_main) as response:
+    with urllib.request.urlopen(url_bc) as response:
         gdf_bc = gpd.read_parquet(BytesIO(response.read()))
         
     # --- load RAS dataset ---
