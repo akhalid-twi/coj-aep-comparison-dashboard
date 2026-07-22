@@ -326,8 +326,19 @@ with col_plot:
 
     fig.update_layout(
         template="plotly_white", plot_bgcolor="#FAFBFC", paper_bgcolor="#F5F7FA",
-        xaxis=dict(type="log", title="Return Period (years)", range=[np.log10(2), np.log10(2000)],
-                  tickvals=[2,5,10,25,50,100,250,500,1000,2000], gridcolor="#E0E6ED"),
+        
+        # xaxis=dict(type="log", title="Return Period (years)", range=[np.log10(2), np.log10(2000)],
+        #           tickvals=[2,5,10,25,50,100,250,500,1000,2000], gridcolor="#E0E6ED"),
+        xaxis=dict(
+            type="log",
+            title="Return Period (years)",
+            range=[np.log10(2), np.log10(2000)],
+            tickvals=[2, 5, 10, 25, 50, 100, 250, 500, 1000, 2000],
+            ticktext=["2", "5", "10", "25", "50", "100", "250", "500", "1000", "2000"],
+            gridcolor="#E0E6ED"
+        ),
+
+        
         yaxis=dict(title="WSE (ft, NAVD88)", gridcolor="#E0E6ED"),
         height=600, margin=dict(l=10, r=10, t=40, b=10),
         legend=dict(title="Scenario", orientation="h", y=1.02, x=0.1, xanchor="left"),
