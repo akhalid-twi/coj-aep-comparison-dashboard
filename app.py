@@ -121,7 +121,7 @@ def get_ball_tree(_df):
     coords_rad = np.radians(np.vstack([_df["lat"], _df["lon"]]).T)
     return BallTree(coords_rad, metric="haversine")
 
-popup=f"Cell: {selected_row['cell_id']}"
+
 tree = get_ball_tree(gdf)
 
 # -----------------------------
