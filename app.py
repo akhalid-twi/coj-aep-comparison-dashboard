@@ -313,7 +313,7 @@ with col_plot:
         f"**Cell:** {selected_row.cell_id}  \n**SACS ID:** {selected_row.sacs_id}"
     )
     # DIAGNOSTIC PRINT: Check exact key names inside the merged JSON
-    st.write("Keys found in cell AEP:", list(aep_data.keys()))
+    # st.write("Keys found in cell AEP:", list(aep_data.keys()))
 
     fig = go.Figure()
     for label, data in aep_filtered.items():
