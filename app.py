@@ -40,6 +40,10 @@ def load_data():
 gdf_main, gdf_ras, gdf_bc = load_data()
 
 
+# Temporary diagnostic:
+st.write("gdf_bc columns:", gdf_bc.columns.tolist())
+st.write("gdf_bc sample row:", gdf_bc.iloc[0].to_dict())
+
 # -----------------------------
 # Merge dicts helper
 # -----------------------------
