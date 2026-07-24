@@ -124,17 +124,23 @@ body { color: #1F2937; }
 
 st.markdown("<h2 style='text-align: center;'>COJ AEP Comparison Dashboard</h2>", unsafe_allow_html=True)
 
-# -----------------------------
-# 4. Session State Initialization
-# -----------------------------
+
+# ==============================================================================
+# 4. SESSION STATE INITIALIZATION
+# ==============================================================================
+# Calculate exact mean lat/lon for Jacksonville center
+jack_lat = float(gdf["lat"].mean())
+jack_lon = float(gdf["lon"].mean())
+
 if "selected_idx" not in st.session_state:
     st.session_state.selected_idx = 0
 
-# Store structural configurations to drive redrawing only when forced
 if "map_center" not in st.session_state:
-    st.session_state.map_center = [float(gdf["lat"].mean()), float(gdf["lon"].mean())]
+    st.session_state.map_center = [jack_lat, jack_lon]
+
 if "map_zoom" not in st.session_state:
     st.session_state.map_zoom = 10
+
 if "map_render_key" not in st.session_state:
     st.session_state.map_render_key = 0
 
@@ -148,6 +154,8 @@ with col2:
 # Layout setup
 col_map, col_plot = st.columns([3, 2])
 
+
+
 # ==============================================================================
 # 6. MAP COMPONENT (Left Column)
 # ==============================================================================
@@ -158,10 +166,11 @@ with col_map:
         tiles="cartodbpositron"
     )
 
-    # 1. Expressly format as [latitude, longitude]
-    data_points = [[row.lat, row.lon] for row in gdf.itertuples()]
+    # STRICTLY extract as [[latitude, longitude], ...]
+    # Using .to_numpy() / .tolist() avoids any named tuple index offset bugs
+    data_points = gdf[["lat", "lon"]].to_numpy().tolist()
 
-    # 2. Callback explicitly takes [lat, lng]
+    # JS Callback explicitly assigning row[0] -> Lat, row[1] -> Lng
     callback_js = """
     function (row) {
         var marker = L.circleMarker(new L.LatLng(row[0], row[1]), {
@@ -179,8 +188,13 @@ with col_map:
 
     # Highlight active selected cell
     selected_row = gdf.iloc[st.session_state.selected_idx]
+    
+    # Explicitly pull lat and lon as floats
+    sel_lat = float(selected_row["lat"])
+    sel_lon = float(selected_row["lon"])
+
     folium.Marker(
-        location=[float(selected_row["lat"]), float(selected_row["lon"])],
+        location=[sel_lat, sel_lon],
         popup=f"Cell: {selected_row.cell_id}",
         icon=folium.Icon(color="red", icon="info-sign")
     ).add_to(m)
@@ -193,7 +207,6 @@ with col_map:
         height=650,
         key=f"map_instance_{st.session_state.map_render_key}"
     )
-
 # ==============================================================================
 # 7. INTERACTIVITY & DISCRETE RERUN SIGNALING
 # ==============================================================================
