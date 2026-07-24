@@ -63,45 +63,55 @@ def merge_aep(main_json, extra_json):
 
     return json.dumps(aep_main)
 
-
 # -----------------------------
-# Merge on cell_id / sacs_id (FIXED ID MATCHING BUG)
+# Merge on cell_id / sacs_id
 # -----------------------------
-gdf_ras_lookup = gdf_ras.copy()
-gdf_ras_lookup["sacs_id"] = gdf_ras_lookup["sacs_id"].astype(str)
-gdf_ras_lookup = gdf_ras_lookup.set_index("sacs_id")
 
-gdf_bc_lookup = gdf_bc.copy()
-gdf_bc_lookup["point_id"] = gdf_bc_lookup["point_id"].astype(str)
-gdf_bc_lookup = gdf_bc_lookup.set_index("point_id")
+# Create lookup dictionaries with integer-normalized string keys
+def build_lookup_dict(df, id_col):
+    lookup = {}
+    for _, r in df.iterrows():
+        raw_id = r[id_col]
+        if pd.notna(raw_id):
+            # Clean floats like 308214.0 -> '308214'
+            try:
+                key_str = str(int(float(raw_id)))
+            except ValueError:
+                key_str = str(raw_id).strip()
+            lookup[key_str] = r["aep"]
+    return lookup
+
+gdf_ras_lookup = build_lookup_dict(gdf_ras, "sacs_id")
+gdf_bc_lookup = build_lookup_dict(gdf_bc, "point_id")
 
 merged_aep = []
 
 for idx, row in gdf_main.iterrows():
-    sacs_id = str(row.sacs_id)
-    cell_id = str(row.cell_id)  # Fix: Use cell_id for bias-corrected lookup!
+    # Normalize current row keys to integer strings
+    try:
+        sacs_id = str(int(float(row.sacs_id))) if pd.notna(row.sacs_id) else ""
+    except ValueError:
+        sacs_id = str(row.sacs_id).strip()
+
+    try:
+        cell_id = str(int(float(row.cell_id))) if pd.notna(row.cell_id) else ""
+    except ValueError:
+        cell_id = str(row.cell_id).strip()
 
     aep_json = row["aep"]
 
-    # 1. Merge RAS TC dataset using sacs_id
-    if sacs_id in gdf_ras_lookup.index:
-        ras_val = gdf_ras_lookup.loc[sacs_id]["aep"]
-        if isinstance(ras_val, pd.Series):
-            ras_val = ras_val.iloc[0]
-        aep_json = merge_aep(aep_json, ras_val)
+    # 1. Merge RAS TC dataset on sacs_id
+    if sacs_id in gdf_ras_lookup:
+        aep_json = merge_aep(aep_json, gdf_ras_lookup[sacs_id])
 
-    # 2. Merge bias-corrected dataset using cell_id (point_id)
-    if cell_id in gdf_bc_lookup.index:
-        bc_val = gdf_bc_lookup.loc[cell_id]["aep"]
-        if isinstance(bc_val, pd.Series):
-            bc_val = bc_val.iloc[0]
-        aep_json = merge_aep(aep_json, bc_val)
+    # 2. Merge bias corrected dataset on cell_id (point_id)
+    if cell_id in gdf_bc_lookup:
+        aep_json = merge_aep(aep_json, gdf_bc_lookup[cell_id])
 
     merged_aep.append(aep_json)
 
 gdf_main["aep"] = merged_aep
 gdf = gdf_main
-
 
 # -----------------------------
 # Spatial Index Tree (Cached)
