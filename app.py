@@ -152,44 +152,46 @@ col_map, col_plot = st.columns([3, 2])
 # 6. MAP COMPONENT (Left Column)
 # ==============================================================================
 with col_map:
-    # We pass fixed values here so native browser panning never triggers Python loop changes
     m = folium.Map(
         location=st.session_state.map_center,
         zoom_start=st.session_state.map_zoom,
         tiles="cartodbpositron"
     )
 
-    # Canvas-based quick performance rendering
-    data_points = list(zip(gdf["lat"], gdf["lon"]))
+    # 1. Expressly format as [latitude, longitude]
+    data_points = [[row.lat, row.lon] for row in gdf.itertuples()]
+
+    # 2. Callback explicitly takes [lat, lng]
     callback_js = """
-        function (row) {
-            var circle = L.circleMarker(new L.LatLng(row[0], row[1]), {
-                radius: 2,
-                color: '#0072B2',
-                fillOpacity: 0.5
-            });
-            return circle;
-        };
+    function (row) {
+        var marker = L.circleMarker(new L.LatLng(row[0], row[1]), {
+            radius: 3,
+            fillColor: '#0072B2',
+            color: '#0072B2',
+            weight: 1,
+            fillOpacity: 0.6
+        });
+        return marker;
+    };
     """
+
     FastMarkerCluster(data=data_points, callback=callback_js).add_to(m)
 
-
-    # Draw highlighted marker over current point
+    # Highlight active selected cell
     selected_row = gdf.iloc[st.session_state.selected_idx]
     folium.Marker(
-        location=[selected_row["lat"], selected_row["lon"]],
+        location=[float(selected_row["lat"]), float(selected_row["lon"])],
         popup=f"Cell: {selected_row.cell_id}",
         icon=folium.Icon(color="red", icon="info-sign")
     ).add_to(m)
 
-    # Render mapping instance using exact keyword control parameters
     map_data = st_folium(
         m,
         center=st.session_state.map_center,
         zoom=st.session_state.map_zoom,
         use_container_width=True,
         height=650,
-        key=f"map_instance_{st.session_state.map_render_key}" # Dynamic key locks rendering loops
+        key=f"map_instance_{st.session_state.map_render_key}"
     )
 
 # ==============================================================================
