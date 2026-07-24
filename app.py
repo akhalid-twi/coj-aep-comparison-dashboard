@@ -179,7 +179,11 @@ with col2:
 # Layout setup
 col_map, col_plot = st.columns([3, 2])
 
-
+with col_plot:
+    st.markdown(f"**Cell:** {selected_row.cell_id}  \n**SACS ID:** {selected_row.sacs_id}")
+    
+    # DIAGNOSTIC PRINT: Check exact key names inside the merged JSON
+    st.write("Keys found in cell AEP:", list(aep_data.keys()))
 # ==============================================================================
 # MAP COMPONENT (Left Column)
 # ==============================================================================
