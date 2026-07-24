@@ -41,74 +41,70 @@ gdf_main, gdf_ras, gdf_bc = load_data()
 
 
 # Temporary diagnostic:
-st.write("gdf_bc columns:", gdf_bc.columns.tolist())
-st.write("gdf_bc sample row:", gdf_bc.iloc[0].to_dict())
+# st.write("gdf_bc columns:", gdf_bc.columns.tolist())
+# st.write("gdf_bc sample row:", gdf_bc.iloc[0].to_dict())
 
 # -----------------------------
 # Merge dicts helper
 # -----------------------------
 def merge_aep(main_json, extra_json):
     if isinstance(main_json, str):
-        aep_main = json.loads(main_json)
+        try:
+            aep_main = json.loads(main_json)
+        except Exception:
+            aep_main = {}
+    elif isinstance(main_json, dict):
+        aep_main = main_json.copy()
     else:
-        aep_main = main_json if main_json is not None else {}
+        aep_main = {}
 
     if pd.isna(extra_json) or extra_json is None:
         return json.dumps(aep_main)
 
-    try:
-        if isinstance(extra_json, str):
+    if isinstance(extra_json, str):
+        try:
             aep_extra = json.loads(extra_json)
-        else:
-            aep_extra = extra_json
-        aep_main.update(aep_extra)
-    except Exception:
-        pass
+        except Exception:
+            aep_extra = {}
+    elif isinstance(extra_json, dict):
+        aep_extra = extra_json
+    else:
+        aep_extra = {}
 
+    aep_main.update(aep_extra)
     return json.dumps(aep_main)
 
-# -----------------------------
-# Merge on cell_id / sacs_id
-# -----------------------------
+# Helper to normalize any ID (int, float, str) to a clean string '369479'
+def clean_id(val):
+    if pd.isna(val) or val is None:
+        return ""
+    try:
+        return str(int(float(val)))
+    except (ValueError, TypeError):
+        return str(val).strip()
 
-# Create lookup dictionaries with integer-normalized string keys
-def build_lookup_dict(df, id_col):
-    lookup = {}
-    for _, r in df.iterrows():
-        raw_id = r[id_col]
-        if pd.notna(raw_id):
-            # Clean floats like 308214.0 -> '308214'
-            try:
-                key_str = str(int(float(raw_id)))
-            except ValueError:
-                key_str = str(raw_id).strip()
-            lookup[key_str] = r["aep"]
-    return lookup
+# -----------------------------
+# Build Lookups
+# -----------------------------
+# RAS matches on sacs_id
+gdf_ras_lookup = {clean_id(r["sacs_id"]): r["aep"] for _, r in gdf_ras.iterrows()}
 
-gdf_ras_lookup = build_lookup_dict(gdf_ras, "sacs_id")
-gdf_bc_lookup = build_lookup_dict(gdf_bc, "point_id")
+# Bias Corrected matches directly on cell_id (NOT point_id!)
+gdf_bc_lookup  = {clean_id(r["cell_id"]): r["aep"] for _, r in gdf_bc.iterrows()}
 
 merged_aep = []
 
 for idx, row in gdf_main.iterrows():
-    # Normalize current row keys to integer strings
-    try:
-        sacs_id = str(int(float(row.sacs_id))) if pd.notna(row.sacs_id) else ""
-    except ValueError:
-        sacs_id = str(row.sacs_id).strip()
-
-    try:
-        cell_id = str(int(float(row.cell_id))) if pd.notna(row.cell_id) else ""
-    except ValueError:
-        cell_id = str(row.cell_id).strip()
+    sacs_id = clean_id(row.get("sacs_id"))
+    cell_id = clean_id(row.get("cell_id"))
 
     aep_json = row["aep"]
 
-    # 1. Merge RAS TC dataset on sacs_id
+    # 1. Merge RAS TC dataset using sacs_id
     if sacs_id in gdf_ras_lookup:
         aep_json = merge_aep(aep_json, gdf_ras_lookup[sacs_id])
 
-    # 2. Merge bias corrected dataset on cell_id (point_id)
+    # 2. Merge Bias Corrected dataset using cell_id
     if cell_id in gdf_bc_lookup:
         aep_json = merge_aep(aep_json, gdf_bc_lookup[cell_id])
 
@@ -116,7 +112,6 @@ for idx, row in gdf_main.iterrows():
 
 gdf_main["aep"] = merged_aep
 gdf = gdf_main
-
 # -----------------------------
 # Spatial Index Tree (Cached)
 # -----------------------------
