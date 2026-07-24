@@ -160,30 +160,19 @@ with col_map:
     )
 
     # Canvas-based quick performance rendering
-    # data_points = list(zip(gdf["lat"], gdf["lon"]))
-    # callback_js = """
-    #     function (row) {
-    #         var circle = L.circleMarker(new L.LatLng(row[0], row[1]), {
-    #             radius: 2,
-    #             color: '#0072B2',
-    #             fillOpacity: 0.5
-    #         });
-    #         return circle;
-    #     };
-    # """
-    # FastMarkerCluster(data=data_points, callback=callback_js).add_to(m)
+    data_points = list(zip(gdf["lat"], gdf["lon"]))
+    callback_js = """
+        function (row) {
+            var circle = L.circleMarker(new L.LatLng(row[0], row[1]), {
+                radius: 2,
+                color: '#0072B2',
+                fillOpacity: 0.5
+            });
+            return circle;
+        };
+    """
+    FastMarkerCluster(data=data_points, callback=callback_js).add_to(m)
 
-    for _, row in gdf.iterrows():
-        folium.CircleMarker(
-            location=[row["lat"], row["lon"]],
-            radius=3,
-            color="blue",
-            weight=1,
-            fill=True,
-            fill_opacity=0.7,
-        ).add_to(m)
-    
-    
 
     # Draw highlighted marker over current point
     selected_row = gdf.iloc[st.session_state.selected_idx]
