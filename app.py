@@ -14,15 +14,18 @@ from streamlit_folium import st_folium
 
 
 # -----------------------------
-# Load Unified Master Dataset (Cached)
+# Load Data from Master Parquet (Cached)
 # -----------------------------
 @st.cache_data
 def load_data():
-    # URL pointing to the unified consolidated GeoParquet asset
     url_main = "https://github.com/akhalid-twi/coj-aep-comparison-dashboard/raw/main/assets/sacs_aep_comparison_for_dashboard.parquet"
 
     with urllib.request.urlopen(url_main) as response:
         gdf = gpd.read_parquet(BytesIO(response.read()))
+
+    # Clean missing or non-finite coordinates to prevent Leaflet / Folium crashes
+    gdf = gdf.dropna(subset=["lat", "lon"])
+    gdf = gdf[np.isfinite(gdf["lat"]) & np.isfinite(gdf["lon"])]
 
     return gdf
 
@@ -107,7 +110,8 @@ with col_map:
         tiles="cartodbpositron",
     )
 
-    data_points = gdf[["lat", "lon"]].to_numpy().tolist()
+    # Convert coordinates to explicit Python floats to keep Leaflet fast
+    data_points = [[float(lat), float(lon)] for lat, lon in zip(gdf["lat"], gdf["lon"])]
 
     callback_js = """
     function (row) {
@@ -142,6 +146,7 @@ with col_map:
         zoom=st.session_state.map_zoom,
         use_container_width=True,
         height=650,
+        returned_objects=["last_clicked"],
         key=f"map_instance_{st.session_state.map_render_key}",
     )
 
@@ -161,7 +166,8 @@ if map_data and map_data.get("last_clicked"):
     earth_radius = 6371000  # meters
     distance_m = dist[0][0] * earth_radius
 
-    if distance_m < 500 and st.session_state.selected_idx != nearest_idx:
+    # 2500m tolerance threshold to make clicking comfortable when zoomed out
+    if distance_m < 2500 and st.session_state.selected_idx != nearest_idx:
         st.session_state.selected_idx = nearest_idx
 
         clicked_row = gdf.iloc[nearest_idx]
