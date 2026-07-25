@@ -14,104 +14,22 @@ from streamlit_folium import st_folium
 
 
 # -----------------------------
-# Load Data from GitHub (Cached)
+# Load Unified Master Dataset (Cached)
 # -----------------------------
 @st.cache_data
 def load_data():
+    # URL pointing to the unified consolidated GeoParquet asset
     url_main = "https://github.com/akhalid-twi/coj-aep-comparison-dashboard/raw/main/assets/sacs_aep_comparison_for_dashboard.parquet"
-    url_ras = "https://github.com/akhalid-twi/coj-aep-comparison-dashboard/raw/main/assets/sacs_ras_tc_aep.parquet"
-    url_bc = "https://github.com/akhalid-twi/coj-aep-comparison-dashboard/raw/main/assets/combined_bias_corrected_aep.parquet"
 
-    # --- load main dataset ---
     with urllib.request.urlopen(url_main) as response:
-        gdf_main = gpd.read_parquet(BytesIO(response.read()))
+        gdf = gpd.read_parquet(BytesIO(response.read()))
 
-    # --- load bias corrected dataset ---
-    with urllib.request.urlopen(url_bc) as response:
-        gdf_bc = gpd.read_parquet(BytesIO(response.read()))
-
-    # --- load RAS dataset ---
-    with urllib.request.urlopen(url_ras) as response:
-        gdf_ras = gpd.read_parquet(BytesIO(response.read()))
-
-    return gdf_main, gdf_ras, gdf_bc
+    return gdf
 
 
-gdf_main, gdf_ras, gdf_bc = load_data()
+gdf = load_data()
 
 
-# Temporary diagnostic:
-# st.write("gdf_bc columns:", gdf_bc.columns.tolist())
-# st.write("gdf_bc sample row:", gdf_bc.iloc[0].to_dict())
-
-# -----------------------------
-# Merge dicts helper
-# -----------------------------
-def merge_aep(main_json, extra_json):
-    if isinstance(main_json, str):
-        try:
-            aep_main = json.loads(main_json)
-        except Exception:
-            aep_main = {}
-    elif isinstance(main_json, dict):
-        aep_main = main_json.copy()
-    else:
-        aep_main = {}
-
-    if pd.isna(extra_json) or extra_json is None:
-        return json.dumps(aep_main)
-
-    if isinstance(extra_json, str):
-        try:
-            aep_extra = json.loads(extra_json)
-        except Exception:
-            aep_extra = {}
-    elif isinstance(extra_json, dict):
-        aep_extra = extra_json
-    else:
-        aep_extra = {}
-
-    aep_main.update(aep_extra)
-    return json.dumps(aep_main)
-
-# Helper to normalize any ID (int, float, str) to a clean string '369479'
-def clean_id(val):
-    if pd.isna(val) or val is None:
-        return ""
-    try:
-        return str(int(float(val)))
-    except (ValueError, TypeError):
-        return str(val).strip()
-
-# -----------------------------
-# Build Lookups
-# -----------------------------
-# RAS matches on sacs_id
-gdf_ras_lookup = {clean_id(r["sacs_id"]): r["aep"] for _, r in gdf_ras.iterrows()}
-
-# Bias Corrected matches directly on cell_id (NOT point_id!)
-gdf_bc_lookup  = {clean_id(r["cell_id"]): r["aep"] for _, r in gdf_bc.iterrows()}
-
-merged_aep = []
-
-for idx, row in gdf_main.iterrows():
-    sacs_id = clean_id(row.get("sacs_id"))
-    cell_id = clean_id(row.get("cell_id"))
-
-    aep_json = row["aep"]
-
-    # 1. Merge RAS TC dataset using sacs_id
-    if sacs_id in gdf_ras_lookup:
-        aep_json = merge_aep(aep_json, gdf_ras_lookup[sacs_id])
-
-    # 2. Merge Bias Corrected dataset using cell_id
-    if cell_id in gdf_bc_lookup:
-        aep_json = merge_aep(aep_json, gdf_bc_lookup[cell_id])
-
-    merged_aep.append(aep_json)
-
-gdf_main["aep"] = merged_aep
-gdf = gdf_main
 # -----------------------------
 # Spatial Index Tree (Cached)
 # -----------------------------
@@ -268,7 +186,7 @@ def filter_aep(aep_dict, option):
 
     filtered = {}
     for k, v in aep_dict.items():
-        if k in ["SACS", "SACS_RAS"]:
+        if k in ["SACS", "SACS_RAS", "SWE"]:
             filtered[k] = v
         elif k == "Combined-BiasCorrected":
             if option == "Base":
@@ -284,6 +202,7 @@ aep_filtered = filter_aep(aep_data, scenario_option)
 COLOR_MAP = {
     "SACS": dict(color="#000000", dash="solid", width=3),
     "SACS_RAS": dict(color="#666666", dash="solid", width=3),
+    "SWE": dict(color="#9E9E9E", dash="dashdot", width=2),
     # NTC
     "NTC-Syn-Base": dict(color="#4CAF50", dash="dot", width=2),
     "NTC-Syn-SLR1": dict(color="#2E7D32", dash="dot", width=3),
@@ -297,14 +216,13 @@ COLOR_MAP = {
     "Combined-SLR1": dict(color="#F57C00", dash="solid", width=3),
     "Combined-SLR4": dict(color="#D84315", dash="solid", width=4),
     # Bias corrected
-    "Combined-BiasCorrected": dict(
-        color="#FF0000", dash="longdash", width=4
-    ),
+    "Combined-BiasCorrected": dict(color="#FF0000", dash="longdash", width=4),
 }
 
 LABEL_MAP = {
     "SACS": "SACS_ADCIRC_CC_Full_set",
     "SACS_RAS": "SACS_RAS_TC_506_storms",
+    "SWE": "SWE Baseline",
     "Combined-BiasCorrected": "Combined-Base (Bias Corrected)",
 }
 
@@ -312,26 +230,27 @@ with col_plot:
     st.markdown(
         f"**Cell:** {selected_row.cell_id}  \n**SACS ID:** {selected_row.sacs_id}"
     )
-    # DIAGNOSTIC PRINT: Check exact key names inside the merged JSON
-    # st.write("Keys found in cell AEP:", list(aep_data.keys()))
 
     fig = go.Figure()
     for label, data in aep_filtered.items():
+        if not data:
+            continue
+
         display_label = LABEL_MAP.get(label, label)
 
-        # Robust extraction for float and string keys
-        x = sorted([float(k) for k in data.keys()])
-        y = []
-        for val_x in x:
-            str_key_int = str(int(val_x)) if val_x.is_integer() else str(val_x)
-            str_key_float = str(val_x)
+        # Parse float return period keys and valid values directly
+        parsed_points = [
+            (float(k), float(v))
+            for k, v in data.items()
+            if v is not None and not pd.isna(v)
+        ]
 
-            if str_key_int in data:
-                y.append(float(data[str_key_int]))
-            elif str_key_float in data:
-                y.append(float(data[str_key_float]))
-            elif val_x in data:
-                y.append(float(data[val_x]))
+        if not parsed_points:
+            continue
+
+        parsed_points.sort(key=lambda item: item[0])
+        x = [pt[0] for pt in parsed_points]
+        y = [pt[1] for pt in parsed_points]
 
         style = COLOR_MAP.get(label, dict(color="gray", dash="solid", width=2))
 
@@ -339,7 +258,7 @@ with col_plot:
             go.Scatter(
                 x=x,
                 y=y,
-                mode="lines",
+                mode="lines+markers",
                 name=display_label,
                 line=dict(
                     color=style["color"],
@@ -350,7 +269,7 @@ with col_plot:
         )
 
     for rp in [10, 100, 500, 1000]:
-        fig.add_vline(x=rp, line_dash="dash", line_color="gray", opacity=0.6)
+        fig.add_vline(x=rp, line_dash="dash", line_color="gray", opacity=0.4)
 
     fig.update_layout(
         template="plotly_white",
@@ -381,7 +300,7 @@ with col_plot:
         height=600,
         margin=dict(l=10, r=10, t=40, b=10),
         legend=dict(
-            title="Scenario", orientation="h", y=1.02, x=0.1, xanchor="left"
+            title="Scenario", orientation="h", y=1.02, x=0.0, xanchor="left"
         ),
     )
 
