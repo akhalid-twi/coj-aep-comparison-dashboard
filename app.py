@@ -205,19 +205,20 @@ def filter_aep(aep_dict, option):
 
 aep_filtered = filter_aep(aep_data, scenario_option)
 
+
 COLOR_MAP = {
     "SACS": dict(color="#000000", dash="solid", width=3),
     "SACS_RAS": dict(color="#666666", dash="solid", width=3),
     "SWE": dict(color="#9E9E9E", dash="dashdot", width=2),
-    # NTC
+    # NTC (green family)
     "NTC-Syn-Base": dict(color="#4CAF50", dash="dot", width=2),
     "NTC-Syn-SLR1": dict(color="#2E7D32", dash="dot", width=3),
     "NTC-Syn-SLR4": dict(color="#1B5E20", dash="dot", width=4),
-    # TC
+    # TC (blue family)
     "TC-OS-Base": dict(color="#42A5F5", dash="dash", width=2),
     "TC-OS-SLR1": dict(color="#1E88E5", dash="dash", width=3),
     "TC-OS-SLR4": dict(color="#0D47A1", dash="dash", width=4),
-    # Combined
+    # Combined (orange/red family)
     "Combined-Base": dict(color="#FFB74D", dash="solid", width=2),
     "Combined-SLR1": dict(color="#F57C00", dash="solid", width=3),
     "Combined-SLR4": dict(color="#D84315", dash="solid", width=4),
@@ -238,13 +239,14 @@ with col_plot:
     )
 
     fig = go.Figure()
+
     for label, data in aep_filtered.items():
         if not data:
             continue
 
         display_label = LABEL_MAP.get(label, label)
 
-        # Parse float return period keys and valid values directly
+        # Parse return periods (x) and WSE (y) while filtering out nulls/NaNs
         parsed_points = [
             (float(k), float(v))
             for k, v in data.items()
@@ -271,9 +273,11 @@ with col_plot:
                     dash=style["dash"],
                     width=style.get("width", 2),
                 ),
+                marker=dict(size=4),
             )
         )
 
+    # Add vertical benchmark lines for key return periods
     for rp in [10, 100, 500, 1000]:
         fig.add_vline(x=rp, line_dash="dash", line_color="gray", opacity=0.4)
 
@@ -285,7 +289,20 @@ with col_plot:
             type="log",
             title="Return Period (years)",
             range=[np.log10(1), np.log10(10000)],
-            tickvals=[2, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 5000, 10000],
+            tickvals=[
+                2,
+                5,
+                10,
+                25,
+                50,
+                100,
+                250,
+                500,
+                1000,
+                2000,
+                5000,
+                10000,
+            ],
             ticktext=[
                 "2",
                 "5",
