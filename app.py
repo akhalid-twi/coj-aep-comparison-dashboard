@@ -111,7 +111,9 @@ with col_map:
     )
 
     # Convert coordinates to explicit Python floats to keep Leaflet fast
-    data_points = [[float(lat), float(lon)] for lat, lon in zip(gdf["lat"], gdf["lon"])]
+    data_points = [
+        [float(lat), float(lon)] for lat, lon in zip(gdf["lat"], gdf["lon"])
+    ]
 
     callback_js = """
     function (row) {
@@ -192,12 +194,20 @@ def filter_aep(aep_dict, option):
 
     filtered = {}
     for k, v in aep_dict.items():
+        # Keep universal benchmarks always
         if k in ["SACS", "SACS_RAS", "SWE"]:
             filtered[k] = v
-        elif k == "Combined-BiasCorrected":
-            if option == "Base":
-                filtered[k] = v
-        elif option in k:
+
+        # Filter bias-corrected scenarios dynamically
+        elif k == "Combined-BiasCorrected" and option == "Base":
+            filtered[k] = v
+        elif k == "Combined-SLR1-BiasCorrected" and option == "SLR1":
+            filtered[k] = v
+        elif k == "Combined-SLR4-BiasCorrected" and option == "SLR4":
+            filtered[k] = v
+
+        # Filter standard uncorrected scenarios
+        elif option in k and "BiasCorrected" not in k:
             filtered[k] = v
 
     return filtered
@@ -218,12 +228,20 @@ COLOR_MAP = {
     "TC-OS-Base": dict(color="#42A5F5", dash="dash", width=2),
     "TC-OS-SLR1": dict(color="#1E88E5", dash="dash", width=3),
     "TC-OS-SLR4": dict(color="#0D47A1", dash="dash", width=4),
-    # Combined (orange/red family)
+    # Combined Uncorrected (orange/red family)
     "Combined-Base": dict(color="#FFB74D", dash="solid", width=2),
     "Combined-SLR1": dict(color="#F57C00", dash="solid", width=3),
     "Combined-SLR4": dict(color="#D84315", dash="solid", width=4),
-    # Bias corrected
-    "Combined-BiasCorrected": dict(color="#FF0000", dash="longdash", width=4),
+    # Combined Bias Corrected (distinct bold long-dashed lines)
+    "Combined-BiasCorrected": dict(
+        color="#D32F2F", dash="longdash", width=4
+    ),  # Red
+    "Combined-SLR1-BiasCorrected": dict(
+        color="#E65100", dash="longdash", width=4
+    ),  # Dark Orange
+    "Combined-SLR4-BiasCorrected": dict(
+        color="#880E4F", dash="longdash", width=4
+    ),  # Deep Crimson
 }
 
 LABEL_MAP = {
@@ -231,6 +249,8 @@ LABEL_MAP = {
     "SACS_RAS": "SACS_RAS_TC_506_storms",
     "SWE": "SWE Baseline",
     "Combined-BiasCorrected": "Combined-Base (Bias Corrected)",
+    "Combined-SLR1-BiasCorrected": "Combined-SLR1 (Bias Corrected)",
+    "Combined-SLR4-BiasCorrected": "Combined-SLR4 (Bias Corrected)",
 }
 
 with col_plot:
@@ -260,7 +280,9 @@ with col_plot:
         x = [pt[0] for pt in parsed_points]
         y = [pt[1] for pt in parsed_points]
 
-        style = COLOR_MAP.get(label, dict(color="gray", dash="solid", width=2))
+        style = COLOR_MAP.get(
+            label, dict(color="gray", dash="solid", width=2)
+        )
 
         fig.add_trace(
             go.Scatter(
@@ -279,7 +301,9 @@ with col_plot:
 
     # Add vertical benchmark lines for key return periods
     for rp in [10, 100, 500, 1000]:
-        fig.add_vline(x=rp, line_dash="dash", line_color="gray", opacity=0.4)
+        fig.add_vline(
+            x=rp, line_dash="dash", line_color="gray", opacity=0.4
+        )
 
     fig.update_layout(
         template="plotly_white",
@@ -323,7 +347,11 @@ with col_plot:
         height=600,
         margin=dict(l=10, r=10, t=40, b=10),
         legend=dict(
-            title="Scenario", orientation="h", y=1.02, x=0.0, xanchor="left"
+            title="Scenario",
+            orientation="h",
+            y=1.02,
+            x=0.0,
+            xanchor="left",
         ),
     )
 
