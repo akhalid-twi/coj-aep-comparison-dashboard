@@ -219,7 +219,7 @@ aep_filtered = filter_aep(aep_data, scenario_option)
 COLOR_MAP = {
     "SACS": dict(color="#000000", dash="solid", width=3),
     "SACS_RAS": dict(color="#666666", dash="solid", width=3),
-    "SWE": dict(color="#9E9E9E", dash="dashdot", width=2),
+    #"SWE": dict(color="#9E9E9E", dash="dashdot", width=2),
     # NTC (green family)
     "NTC-Syn-Base": dict(color="#4CAF50", dash="dot", width=2),
     "NTC-Syn-SLR1": dict(color="#2E7D32", dash="dot", width=3),
@@ -234,13 +234,13 @@ COLOR_MAP = {
     "Combined-SLR4": dict(color="#D84315", dash="solid", width=4),
     # Combined Bias Corrected (distinct bold long-dashed lines)
     "Combined-BiasCorrected": dict(
-        color="#D32F2F", dash="longdash", width=4
+        color="#D32F2F", dash="solid", width=4
     ),  # Red
     "Combined-SLR1-BiasCorrected": dict(
-        color="#E65100", dash="longdash", width=4
+        color="#E65100", dash="solid", width=4
     ),  # Dark Orange
     "Combined-SLR4-BiasCorrected": dict(
-        color="#880E4F", dash="longdash", width=4
+        color="#880E4F", dash="solid", width=4
     ),  # Deep Crimson
 }
 
