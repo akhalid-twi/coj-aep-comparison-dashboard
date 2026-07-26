@@ -98,19 +98,47 @@ with col_ctrl:
 
 # Create the two main side-by-side layout columns
 col_map, col_plot = st.columns([3, 2])
+# ==============================================================================
+# INTERACTIVITY CHECK (Placed BEFORE Map Building)
+# ==============================================================================
+# We check if there's a click in st.session_state from the previous run
+# and update selected_idx BEFORE building the map object m.
+
+if "coj_interactive_map" in st.session_state and st.session_state["coj_interactive_map"]:
+    last_click = st.session_state["coj_interactive_map"].get("last_clicked")
+    if last_click:
+        lat_click = last_click["lat"]
+        lon_click = last_click["lng"]
+
+        lat_click_rad = np.radians(lat_click)
+        lon_click_rad = np.radians(lon_click)
+        dist, idx = tree.query([[lat_click_rad, lon_click_rad]], k=1)
+        nearest_idx = idx[0][0]
+
+        distance_m = dist[0][0] * 6371000  # Earth radius in meters
+
+        if distance_m < 2500 and st.session_state.selected_idx != nearest_idx:
+            st.session_state.selected_idx = nearest_idx
+            clicked_row = gdf.iloc[nearest_idx]
+            st.session_state.map_center = [
+                float(clicked_row["lat"]),
+                float(clicked_row["lon"]),
+            ]
+            st.session_state.map_zoom = 14
+
 
 # ==============================================================================
 # MAP COMPONENT (Left Column)
 # ==============================================================================
 with col_map:
-    # Initialize Folium map with current center & zoom from session state
+    # 1. Static base map
     m = folium.Map(
         location=st.session_state.map_center,
         zoom_start=st.session_state.map_zoom,
         tiles="cartodbpositron",
     )
 
-    # Render FEMA Flood Hazard Polygons
+    # 2. Add static FEMA layer
     if fema_geojson:
         def style_fema(feature):
             zone = str(feature["properties"].get("FLD_ZONE", ""))
@@ -133,7 +161,7 @@ with col_map:
             ),
         ).add_to(m)
 
-    # SACS / Model Points Cluster
+    # 3. Add static Cluster layer
     data_points = [[float(lat), float(lon)] for lat, lon in zip(gdf["lat"], gdf["lon"])]
     callback_js = """
     function (row) {
@@ -149,28 +177,29 @@ with col_map:
     """
     FastMarkerCluster(data=data_points, callback=callback_js).add_to(m)
 
-    # Highlight active selected cell
+    # 4. Create a DYNAMIC FeatureGroup for the selected marker
+    fg_selected = folium.FeatureGroup(name="Selected Cell Marker")
     selected_row = gdf.iloc[st.session_state.selected_idx]
-    sel_lat = float(selected_row["lat"])
-    sel_lon = float(selected_row["lon"])
-
+    
     folium.Marker(
-        location=[sel_lat, sel_lon],
+        location=[float(selected_row["lat"]), float(selected_row["lon"])],
         popup=f"Cell: {selected_row.get('cell_id', st.session_state.selected_idx)}",
         icon=folium.Icon(color="red", icon="info-sign"),
-    ).add_to(m)
+    ).add_to(fg_selected)
 
     folium.LayerControl().add_to(m)
 
-    # FIX 1: Static key and don't explicitly pass center/zoom props to st_folium
+    # 5. Pass feature_group_to_add, center, and zoom directly to st_folium
     map_data = st_folium(
         m,
+        center=st.session_state.map_center,
+        zoom=st.session_state.map_zoom,
+        feature_group_to_add=fg_selected,
         use_container_width=True,
         height=650,
         returned_objects=["last_clicked"],
-        key="coj_interactive_map",  # Keep key constant across runs
+        key="coj_interactive_map",
     )
-
 # ==============================================================================
 # INTERACTIVITY & STATE UPDATES
 # ==============================================================================
