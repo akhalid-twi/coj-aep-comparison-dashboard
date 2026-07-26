@@ -148,8 +148,8 @@ with col_map:
     function (row) {
         var marker = L.circleMarker(new L.LatLng(row[0], row[1]), {
             radius: 3,
-            fillColor: '#0072B2',
-            color: '#0072B2',
+            fillColor: '#000000',
+            color: '#000000',
             weight: 1,
             fillOpacity: 0.6
         });
