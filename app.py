@@ -180,7 +180,6 @@ if map_data and map_data.get("last_clicked"):
         st.session_state.map_zoom = 14
         st.session_state.map_render_key += 1
         st.rerun()
-
 # ==============================================================================
 # PLOT COMPONENT (Right Column)
 # ==============================================================================
@@ -254,13 +253,20 @@ LABEL_MAP = {
 }
 
 with col_plot:
-    # Display BFE text alongside cell and SACS ID if present
-    fema_bfe = selected_row.get("fema_bfe")
-    bfe_str = (
-        f"{float(fema_bfe):.2f} ft"
-        if (fema_bfe is not None and not pd.isna(fema_bfe))
-        else "N/A"
-    )
+    # -------------------------------------------------------------------------
+    # Safely Extract and Parse FEMA 100-Year BFE
+    # -------------------------------------------------------------------------
+    raw_bfe = selected_row.get("fema_bfe")
+
+    try:
+        if raw_bfe is not None and not pd.isna(raw_bfe):
+            fema_bfe = float(raw_bfe)
+        else:
+            fema_bfe = None
+    except (ValueError, TypeError):
+        fema_bfe = None
+
+    bfe_str = f"{fema_bfe:.2f} ft" if fema_bfe is not None else "N/A"
 
     st.markdown(
         f"**Cell:** {selected_row.cell_id} | **SACS ID:** {selected_row.sacs_id} | **FEMA BFE (100yr):** {bfe_str}"
@@ -268,6 +274,9 @@ with col_plot:
 
     fig = go.Figure()
 
+    # -------------------------------------------------------------------------
+    # Plot Return Period Curves
+    # -------------------------------------------------------------------------
     for label, data in aep_filtered.items():
         if not data:
             continue
@@ -310,14 +319,13 @@ with col_plot:
     # -------------------------------------------------------------------------
     # Add FEMA 100-Year BFE Horizontal Reference Line
     # -------------------------------------------------------------------------
-    if fema_bfe is not None and not pd.isna(fema_bfe):
-        bfe_val = float(fema_bfe)
+    if fema_bfe is not None:
         fig.add_hline(
-            y=bfe_val,
+            y=fema_bfe,
             line_dash="dashdot",
             line_color="#9C27B0",  # Distinct purple line
             line_width=2.5,
-            annotation_text=f"FEMA 100-Yr BFE ({bfe_val:.2f} ft)",
+            annotation_text=f"FEMA 100-Yr BFE ({fema_bfe:.2f} ft)",
             annotation_position="top left",
             annotation_font=dict(size=11, color="#9C27B0"),
         )
