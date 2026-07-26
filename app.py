@@ -27,6 +27,8 @@ if "map_center" not in st.session_state:
     st.session_state.map_center = [30.33218, -81.65565]  # Jacksonville, FL
 if "map_zoom" not in st.session_state:
     st.session_state.map_zoom = 10
+if "last_processed_click" not in st.session_state:
+    st.session_state.last_processed_click = None
 
 
 # -----------------------------
@@ -113,7 +115,6 @@ with col_map:
 
         def style_fema(feature):
             zone = str(feature["properties"].get("FLD_ZONE", ""))
-            # Style Zone V (coastal high hazard) in purple, Zone A in blue
             color = "#8E24AA" if "V" in zone else "#0288D1"
             return {
                 "fillColor": color,
@@ -157,7 +158,6 @@ with col_map:
 
     # Highlight active selected cell
     selected_row = gdf.iloc[st.session_state.selected_idx]
-
     sel_lat = float(selected_row["lat"])
     sel_lon = float(selected_row["lon"])
 
@@ -177,28 +177,43 @@ with col_map:
         use_container_width=True,
         height=650,
         returned_objects=["last_clicked"],
-        key="main_folium_map",
+        key="main_map_instance",  # Fixed static key
     )
 
+
 # ==============================================================================
-# INTERACTIVITY & SPATIAL LOOKUP
+# INTERACTIVITY & DISCRETE RERUN SIGNALING
 # ==============================================================================
 if map_data and map_data.get("last_clicked"):
-    lat_click = map_data["last_clicked"]["lat"]
-    lon_click = map_data["last_clicked"]["lng"]
+    current_click = map_data["last_clicked"]
 
-    # Spatial Lookup
-    lat_click_rad = np.radians(lat_click)
-    lon_click_rad = np.radians(lon_click)
-    dist, idx = tree.query([[lat_click_rad, lon_click_rad]], k=1)
-    nearest_idx = idx[0][0]
+    # Only execute rerun logic if this click event hasn't been handled yet
+    if current_click != st.session_state.last_processed_click:
+        st.session_state.last_processed_click = current_click
 
-    earth_radius = 6371000  # meters
-    distance_m = dist[0][0] * earth_radius
+        lat_click = current_click["lat"]
+        lon_click = current_click["lng"]
 
-    # 2500m tolerance threshold to make clicking comfortable when zoomed out
-    if distance_m < 2500 and st.session_state.selected_idx != nearest_idx:
-        st.session_state.selected_idx = nearest_idx
+        # Spatial Lookup
+        lat_click_rad = np.radians(lat_click)
+        lon_click_rad = np.radians(lon_click)
+        dist, idx = tree.query([[lat_click_rad, lon_click_rad]], k=1)
+        nearest_idx = idx[0][0]
+
+        earth_radius = 6371000  # meters
+        distance_m = dist[0][0] * earth_radius
+
+        # 2500m tolerance threshold
+        if distance_m < 2500 and st.session_state.selected_idx != nearest_idx:
+            st.session_state.selected_idx = nearest_idx
+            clicked_row = gdf.iloc[nearest_idx]
+            st.session_state.map_center = [
+                float(clicked_row["lat"]),
+                float(clicked_row["lon"]),
+            ]
+            st.session_state.map_zoom = 14
+            st.rerun()
+
 
 # ==============================================================================
 # PLOT COMPONENT (Right Column)
@@ -214,19 +229,14 @@ def filter_aep(aep_dict, option):
 
     filtered = {}
     for k, v in aep_dict.items():
-        # Keep universal benchmarks always
         if k in ["SACS", "SACS_RAS", "SWE"]:
             filtered[k] = v
-
-        # Filter bias-corrected scenarios dynamically
         elif k == "Combined-BiasCorrected" and option == "Base":
             filtered[k] = v
         elif k == "Combined-SLR1-BiasCorrected" and option == "SLR1":
             filtered[k] = v
         elif k == "Combined-SLR4-BiasCorrected" and option == "SLR4":
             filtered[k] = v
-
-        # Filter standard uncorrected scenarios
         elif option in k and "BiasCorrected" not in k:
             filtered[k] = v
 
@@ -234,7 +244,6 @@ def filter_aep(aep_dict, option):
 
 
 aep_filtered = filter_aep(aep_data, scenario_option)
-
 
 COLOR_MAP = {
     "SACS": dict(color="#000000", dash="solid", width=3),
@@ -263,7 +272,6 @@ LABEL_MAP = {
 }
 
 with col_plot:
-    # Safely Extract and Parse FEMA 100-Year BFE
     raw_bfe = selected_row.get("fema_bfe")
 
     try:
@@ -284,13 +292,11 @@ with col_plot:
 
     fig = go.Figure()
 
-    # Plot Return Period Curves
     for label, data in aep_filtered.items():
         if not data:
             continue
 
         display_label = LABEL_MAP.get(label, label)
-
         parsed_points = [
             (float(k), float(v))
             for k, v in data.items()
@@ -323,7 +329,6 @@ with col_plot:
             )
         )
 
-    # Add FEMA 100-Year BFE Horizontal Reference Line
     if fema_bfe is not None:
         fig.add_hline(
             y=fema_bfe,
@@ -335,7 +340,6 @@ with col_plot:
             annotation_font=dict(size=11, color="#9C27B0"),
         )
 
-    # Add vertical benchmark lines for key return periods
     for rp in [10, 100, 500, 1000]:
         fig.add_vline(
             x=rp, line_dash="dash", line_color="gray", opacity=0.4
@@ -349,34 +353,8 @@ with col_plot:
             type="log",
             title="Return Period (years)",
             range=[np.log10(1), np.log10(10000)],
-            tickvals=[
-                2,
-                5,
-                10,
-                25,
-                50,
-                100,
-                250,
-                500,
-                1000,
-                2000,
-                5000,
-                10000,
-            ],
-            ticktext=[
-                "2",
-                "5",
-                "10",
-                "25",
-                "50",
-                "100",
-                "250",
-                "500",
-                "1000",
-                "2000",
-                "5000",
-                "10000",
-            ],
+            tickvals=[2, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 5000, 10000],
+            ticktext=["2", "5", "10", "25", "50", "100", "250", "500", "1000", "2000", "5000", "10000"],
             gridcolor="#E0E6ED",
         ),
         yaxis=dict(title="WSE (ft, NAVD88)", gridcolor="#E0E6ED"),
