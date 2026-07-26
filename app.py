@@ -23,10 +23,8 @@ def load_data():
     with urllib.request.urlopen(url_main) as response:
         gdf = gpd.read_parquet(BytesIO(response.read()))
 
-    # Clean missing or non-finite coordinates to prevent Leaflet / Folium crashes
     gdf = gdf.dropna(subset=["lat", "lon"])
     gdf = gdf[np.isfinite(gdf["lat"]) & np.isfinite(gdf["lon"])]
-
     return gdf
 
 
@@ -34,70 +32,27 @@ gdf = load_data()
 
 
 # -----------------------------
-# Spatial Index Tree (Cached)
+# Load FEMA GeoParquet Layer (Cached)
 # -----------------------------
-@st.cache_resource
-def get_ball_tree(_df):
-    coords_rad = np.radians(np.vstack([_df["lat"], _df["lon"]]).T)
-    return BallTree(coords_rad, metric="haversine")
+@st.cache_data
+def load_fema_layer():
+    url_fema = "https://github.com/akhalid-twi/coj-aep-comparison-dashboard/raw/main/assets/fema_zones.parquet"
+    try:
+        with urllib.request.urlopen(url_fema) as response:
+            fema_gdf = gpd.read_parquet(BytesIO(response.read()))
+
+        # Ensure WGS84 projection for Leaflet
+        if fema_gdf.crs != "EPSG:4326":
+            fema_gdf = fema_gdf.to_crs(epsg=4326)
+
+        # Convert GeoDataFrame directly to GeoJSON dict structure for Folium
+        return json.loads(fema_gdf.to_json())
+    except Exception as e:
+        st.warning(f"Could not load FEMA zones parquet: {e}")
+        return None
 
 
-tree = get_ball_tree(gdf)
-
-# -----------------------------
-# App Setup & Styles
-# -----------------------------
-st.set_page_config(layout="wide")
-
-st.markdown(
-    """
-<style>
-[data-testid="stAppViewContainer"] { background-color: #EEF2F6; }
-[data-testid="stMainBlockContainer"] {
-    background-color: #F5F7FA;
-    padding-top: 2rem;
-    padding-bottom: 2rem;
-    border-radius: 10px;
-}
-body { color: #1F2937; }
-</style>
-""",
-    unsafe_allow_html=True,
-)
-
-st.markdown(
-    "<h2 style='text-align: center;'>COJ AEP Comparison Dashboard</h2>",
-    unsafe_allow_html=True,
-)
-
-
-# ==============================================================================
-# SESSION STATE INITIALIZATION
-# ==============================================================================
-jack_lat = float(gdf["lat"].mean())
-jack_lon = float(gdf["lon"].mean())
-
-if "selected_idx" not in st.session_state:
-    st.session_state.selected_idx = 0
-
-if "map_center" not in st.session_state:
-    st.session_state.map_center = [jack_lat, jack_lon]
-
-if "map_zoom" not in st.session_state:
-    st.session_state.map_zoom = 10
-
-if "map_render_key" not in st.session_state:
-    st.session_state.map_render_key = 0
-
-# -----------------------------
-# Global Scenario Controls
-# -----------------------------
-col1, col2 = st.columns([6, 1])
-with col2:
-    scenario_option = st.selectbox("Scenario", ["All", "Base", "SLR1", "SLR4"])
-
-# Layout setup
-col_map, col_plot = st.columns([3, 2])
+fema_geojson = load_fema_layer()
 
 
 # ==============================================================================
@@ -110,7 +65,36 @@ with col_map:
         tiles="cartodbpositron",
     )
 
-    # Convert coordinates to explicit Python floats to keep Leaflet fast
+    # -------------------------------------------------------------------------
+    # Render FEMA Flood Hazard Polygons from GeoParquet
+    # -------------------------------------------------------------------------
+    if fema_geojson:
+
+        def style_fema(feature):
+            zone = str(feature["properties"].get("FLD_ZONE", ""))
+            # Style Zone V (coastal high hazard) in purple, Zone A in blue
+            color = "#8E24AA" if "V" in zone else "#0288D1"
+            return {
+                "fillColor": color,
+                "color": color,
+                "weight": 1,
+                "fillOpacity": 0.25,
+            }
+
+        folium.GeoJson(
+            fema_geojson,
+            name="FEMA Flood Zones",
+            style_function=style_fema,
+            tooltip=folium.GeoJsonTooltip(
+                fields=["FLD_ZONE", "BFE"],
+                aliases=["Zone:", "BFE (ft):"],
+                localize=True,
+            ),
+        ).add_to(m)
+
+    # -------------------------------------------------------------------------
+    # SACS / Model Points Cluster
+    # -------------------------------------------------------------------------
     data_points = [
         [float(lat), float(lon)] for lat, lon in zip(gdf["lat"], gdf["lon"])
     ]
@@ -141,6 +125,9 @@ with col_map:
         popup=f"Cell: {selected_row.cell_id}",
         icon=folium.Icon(color="red", icon="info-sign"),
     ).add_to(m)
+
+    # Layer control toggle for map layers
+    folium.LayerControl().add_to(m)
 
     map_data = st_folium(
         m,
