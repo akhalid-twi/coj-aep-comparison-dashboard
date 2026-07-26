@@ -27,8 +27,6 @@ if "map_center" not in st.session_state:
     st.session_state.map_center = [30.33218, -81.65565]  # Jacksonville, FL
 if "map_zoom" not in st.session_state:
     st.session_state.map_zoom = 10
-if "map_render_key" not in st.session_state:
-    st.session_state.map_render_key = 0
 
 
 # -----------------------------
@@ -52,14 +50,12 @@ gdf = load_data()
 # -----------------------------
 # Build BallTree for Spatial Clicks
 # -----------------------------
-# Change the function signature to accept raw numpy arrays
 @st.cache_resource
 def build_spatial_tree(lats: np.ndarray, lons: np.ndarray):
     coords_rad = np.radians(np.column_stack([lats, lons]))
     return BallTree(coords_rad, metric="haversine")
 
 
-# Call it using array values from the GeoDataFrame
 tree = build_spatial_tree(gdf["lat"].values, gdf["lon"].values)
 
 
@@ -181,11 +177,11 @@ with col_map:
         use_container_width=True,
         height=650,
         returned_objects=["last_clicked"],
-        key=f"map_instance_{st.session_state.map_render_key}",
+        key="main_folium_map",
     )
 
 # ==============================================================================
-# INTERACTIVITY & DISCRETE RERUN SIGNALING
+# INTERACTIVITY & SPATIAL LOOKUP
 # ==============================================================================
 if map_data and map_data.get("last_clicked"):
     lat_click = map_data["last_clicked"]["lat"]
@@ -203,15 +199,6 @@ if map_data and map_data.get("last_clicked"):
     # 2500m tolerance threshold to make clicking comfortable when zoomed out
     if distance_m < 2500 and st.session_state.selected_idx != nearest_idx:
         st.session_state.selected_idx = nearest_idx
-
-        clicked_row = gdf.iloc[nearest_idx]
-        st.session_state.map_center = [
-            float(clicked_row["lat"]),
-            float(clicked_row["lon"]),
-        ]
-        st.session_state.map_zoom = 14
-        st.session_state.map_render_key += 1
-        st.rerun()
 
 # ==============================================================================
 # PLOT COMPONENT (Right Column)
