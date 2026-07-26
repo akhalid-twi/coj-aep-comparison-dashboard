@@ -219,7 +219,7 @@ aep_filtered = filter_aep(aep_data, scenario_option)
 COLOR_MAP = {
     "SACS": dict(color="#000000", dash="solid", width=3),
     "SACS_RAS": dict(color="#666666", dash="solid", width=3),
-    #"SWE": dict(color="#9E9E9E", dash="dashdot", width=2),
+    # "SWE": dict(color="#9E9E9E", dash="dashdot", width=2),
     # NTC (green family)
     "NTC-Syn-Base": dict(color="#4CAF50", dash="dot", width=2),
     "NTC-Syn-SLR1": dict(color="#2E7D32", dash="dot", width=3),
@@ -254,8 +254,16 @@ LABEL_MAP = {
 }
 
 with col_plot:
+    # Display BFE text alongside cell and SACS ID if present
+    fema_bfe = selected_row.get("fema_bfe")
+    bfe_str = (
+        f"{float(fema_bfe):.2f} ft"
+        if (fema_bfe is not None and not pd.isna(fema_bfe))
+        else "N/A"
+    )
+
     st.markdown(
-        f"**Cell:** {selected_row.cell_id}  \n**SACS ID:** {selected_row.sacs_id}"
+        f"**Cell:** {selected_row.cell_id} | **SACS ID:** {selected_row.sacs_id} | **FEMA BFE (100yr):** {bfe_str}"
     )
 
     fig = go.Figure()
@@ -297,6 +305,21 @@ with col_plot:
                 ),
                 marker=dict(size=4),
             )
+        )
+
+    # -------------------------------------------------------------------------
+    # Add FEMA 100-Year BFE Horizontal Reference Line
+    # -------------------------------------------------------------------------
+    if fema_bfe is not None and not pd.isna(fema_bfe):
+        bfe_val = float(fema_bfe)
+        fig.add_hline(
+            y=bfe_val,
+            line_dash="dashdot",
+            line_color="#9C27B0",  # Distinct purple line
+            line_width=2.5,
+            annotation_text=f"FEMA 100-Yr BFE ({bfe_val:.2f} ft)",
+            annotation_position="top left",
+            annotation_font=dict(size=11, color="#9C27B0"),
         )
 
     # Add vertical benchmark lines for key return periods
