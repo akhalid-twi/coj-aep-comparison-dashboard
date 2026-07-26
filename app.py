@@ -52,13 +52,15 @@ gdf = load_data()
 # -----------------------------
 # Build BallTree for Spatial Clicks
 # -----------------------------
+# Change the function signature to accept raw numpy arrays
 @st.cache_resource
-def build_spatial_tree(df):
-    coords_rad = np.radians(df[["lat", "lon"]].values)
+def build_spatial_tree(lats: np.ndarray, lons: np.ndarray):
+    coords_rad = np.radians(np.column_stack([lats, lons]))
     return BallTree(coords_rad, metric="haversine")
 
 
-tree = build_spatial_tree(gdf)
+# Call it using array values from the GeoDataFrame
+tree = build_spatial_tree(gdf["lat"].values, gdf["lon"].values)
 
 
 # -----------------------------
