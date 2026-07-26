@@ -23,18 +23,24 @@ st.set_page_config(
 # -----------------------------
 if "selected_idx" not in st.session_state:
     st.session_state.selected_idx = 0
-if "last_processed_click" not in st.session_state:
-    st.session_state.last_processed_click = None
+if "map_center" not in st.session_state:
+    st.session_state.map_center = [30.33218, -81.65565]  # Jacksonville, FL
+if "map_zoom" not in st.session_state:
+    st.session_state.map_zoom = 10
+if "map_render_key" not in st.session_state:
+    st.session_state.map_render_key = 0
 
 
 # -----------------------------
-# Load Data & Tree (Cached)
+# Load Data from Master Parquet (Cached)
 # -----------------------------
 @st.cache_data
 def load_data():
     url_main = "https://github.com/akhalid-twi/coj-aep-comparison-dashboard/raw/main/assets/sacs_aep_comparison_for_dashboard.parquet"
+
     with urllib.request.urlopen(url_main) as response:
         gdf = gpd.read_parquet(BytesIO(response.read()))
+
     gdf = gdf.dropna(subset=["lat", "lon"])
     gdf = gdf[np.isfinite(gdf["lat"]) & np.isfinite(gdf["lon"])]
     return gdf
@@ -43,23 +49,35 @@ def load_data():
 gdf = load_data()
 
 
+# -----------------------------
+# Build BallTree for Spatial Clicks
+# -----------------------------
+# Change the function signature to accept raw numpy arrays
 @st.cache_resource
 def build_spatial_tree(lats: np.ndarray, lons: np.ndarray):
     coords_rad = np.radians(np.column_stack([lats, lons]))
     return BallTree(coords_rad, metric="haversine")
 
 
+# Call it using array values from the GeoDataFrame
 tree = build_spatial_tree(gdf["lat"].values, gdf["lon"].values)
 
 
+# -----------------------------
+# Load FEMA GeoParquet Layer (Cached)
+# -----------------------------
 @st.cache_data
 def load_fema_layer():
     url_fema = "https://github.com/akhalid-twi/coj-aep-comparison-dashboard/raw/main/assets/fema_zones.parquet"
     try:
         with urllib.request.urlopen(url_fema) as response:
             fema_gdf = gpd.read_parquet(BytesIO(response.read()))
+
+        # Ensure WGS84 projection for Leaflet
         if fema_gdf.crs != "EPSG:4326":
             fema_gdf = fema_gdf.to_crs(epsg=4326)
+
+        # Convert GeoDataFrame directly to GeoJSON dict structure for Folium
         return json.loads(fema_gdf.to_json())
     except Exception as e:
         st.warning(f"Could not load FEMA zones parquet: {e}")
@@ -70,19 +88,30 @@ fema_geojson = load_fema_layer()
 
 
 # -----------------------------
-# Cached Base Map Initialization
+# Global Scenario Controls
 # -----------------------------
-@st.cache_resource
-def get_base_map():
-    # Base map centered statically on Jacksonville
+col_header, col_ctrl = st.columns([6, 2])
+with col_header:
+    st.title("COJ AEP Comparison Dashboard")
+with col_ctrl:
+    scenario_option = st.selectbox("Scenario", ["All", "Base", "SLR1", "SLR4"])
+
+# Create the two main side-by-side layout columns
+col_map, col_plot = st.columns([3, 2])
+
+# ==============================================================================
+# MAP COMPONENT (Left Column)
+# ==============================================================================
+with col_map:
+    # Initialize Folium map with current center & zoom from session state
     m = folium.Map(
-        location=[30.33218, -81.65565],
-        zoom_start=10,
+        location=st.session_state.map_center,
+        zoom_start=st.session_state.map_zoom,
         tiles="cartodbpositron",
     )
 
+    # Render FEMA Flood Hazard Polygons
     if fema_geojson:
-
         def style_fema(feature):
             zone = str(feature["properties"].get("FLD_ZONE", ""))
             color = "#8E24AA" if "V" in zone else "#0288D1"
@@ -104,10 +133,8 @@ def get_base_map():
             ),
         ).add_to(m)
 
-    data_points = [
-        [float(lat), float(lon)] for lat, lon in zip(gdf["lat"], gdf["lon"])
-    ]
-
+    # SACS / Model Points Cluster
+    data_points = [[float(lat), float(lon)] for lat, lon in zip(gdf["lat"], gdf["lon"])]
     callback_js = """
     function (row) {
         var marker = L.circleMarker(new L.LatLng(row[0], row[1]), {
@@ -121,122 +148,129 @@ def get_base_map():
     };
     """
     FastMarkerCluster(data=data_points, callback=callback_js).add_to(m)
-    folium.LayerControl().add_to(m)
-    return m
 
-
-# -----------------------------
-# Layout
-# -----------------------------
-col_header, col_ctrl = st.columns([6, 2])
-with col_header:
-    st.title("COJ AEP Comparison Dashboard")
-with col_ctrl:
-    scenario_option = st.selectbox("Scenario", ["All", "Base", "SLR1", "SLR4"])
-
-col_map, col_plot = st.columns([3, 2])
-
-# ==============================================================================
-# MAP COMPONENT
-# ==============================================================================
-with col_map:
-    # Build isolated FeatureGroup for red active marker
+    # Highlight active selected cell
     selected_row = gdf.iloc[st.session_state.selected_idx]
     sel_lat = float(selected_row["lat"])
     sel_lon = float(selected_row["lon"])
 
-    marker_fg = folium.FeatureGroup(name="Selected Cell Marker")
     folium.Marker(
         location=[sel_lat, sel_lon],
         popup=f"Cell: {selected_row.get('cell_id', st.session_state.selected_idx)}",
         icon=folium.Icon(color="red", icon="info-sign"),
-    ).add_to(marker_fg)
+    ).add_to(m)
 
-    # Base map loaded from cache (Static structure)
-    base_map = get_base_map()
+    folium.LayerControl().add_to(m)
 
+    # FIX 1: Static key and don't explicitly pass center/zoom props to st_folium
     map_data = st_folium(
-        base_map,
-        feature_group_to_add=marker_fg,  # In-place dynamic JavaScript update
+        m,
         use_container_width=True,
         height=650,
         returned_objects=["last_clicked"],
-        key="main_map_static_key",
+        key="coj_interactive_map",  # Keep key constant across runs
     )
 
-    # Click handling
-    if map_data and map_data.get("last_clicked"):
-        current_click = map_data["last_clicked"]
-        if current_click != st.session_state.last_processed_click:
-            st.session_state.last_processed_click = current_click
+# ==============================================================================
+# INTERACTIVITY & STATE UPDATES
+# ==============================================================================
+if map_data and map_data.get("last_clicked"):
+    lat_click = map_data["last_clicked"]["lat"]
+    lon_click = map_data["last_clicked"]["lng"]
 
-            lat_click_rad = np.radians(current_click["lat"])
-            lon_click_rad = np.radians(current_click["lng"])
-            dist, idx = tree.query([[lat_click_rad, lon_click_rad]], k=1)
-            nearest_idx = idx[0][0]
+    # Spatial Lookup
+    lat_click_rad = np.radians(lat_click)
+    lon_click_rad = np.radians(lon_click)
+    dist, idx = tree.query([[lat_click_rad, lon_click_rad]], k=1)
+    nearest_idx = idx[0][0]
 
-            distance_m = dist[0][0] * 6371000
+    earth_radius = 6371000  # meters
+    distance_m = dist[0][0] * earth_radius
 
-            if distance_m < 2500 and st.session_state.selected_idx != nearest_idx:
-                st.session_state.selected_idx = nearest_idx
-                st.rerun()
+    # 2500m tolerance threshold
+    if distance_m < 2500 and st.session_state.selected_idx != nearest_idx:
+        st.session_state.selected_idx = nearest_idx
+
+        clicked_row = gdf.iloc[nearest_idx]
+        st.session_state.map_center = [
+            float(clicked_row["lat"]),
+            float(clicked_row["lon"]),
+        ]
+        st.session_state.map_zoom = 14
+        
+        # FIX 2 & 3: Removed map_render_key increment and st.rerun()
 
 # ==============================================================================
-# PLOT COMPONENT
+# PLOT COMPONENT (Right Column)
 # ==============================================================================
+selected_row = gdf.iloc[st.session_state.selected_idx]
+aep_raw = selected_row["aep"]
+aep_data = json.loads(aep_raw) if isinstance(aep_raw, str) else aep_raw
+
+
+def filter_aep(aep_dict, option):
+    if option == "All":
+        return aep_dict
+
+    filtered = {}
+    for k, v in aep_dict.items():
+        # Keep universal benchmarks always
+        if k in ["SACS", "SACS_RAS", "SWE"]:
+            filtered[k] = v
+
+        # Filter bias-corrected scenarios dynamically
+        elif k == "Combined-BiasCorrected" and option == "Base":
+            filtered[k] = v
+        elif k == "Combined-SLR1-BiasCorrected" and option == "SLR1":
+            filtered[k] = v
+        elif k == "Combined-SLR4-BiasCorrected" and option == "SLR4":
+            filtered[k] = v
+
+        # Filter standard uncorrected scenarios
+        elif option in k and "BiasCorrected" not in k:
+            filtered[k] = v
+
+    return filtered
+
+
+aep_filtered = filter_aep(aep_data, scenario_option)
+
+
+COLOR_MAP = {
+    "SACS": dict(color="#000000", dash="solid", width=3),
+    "SACS_RAS": dict(color="#666666", dash="solid", width=3),
+    "NTC-Syn-Base": dict(color="#4CAF50", dash="dot", width=2),
+    "NTC-Syn-SLR1": dict(color="#2E7D32", dash="dot", width=3),
+    "NTC-Syn-SLR4": dict(color="#1B5E20", dash="dot", width=4),
+    "TC-OS-Base": dict(color="#42A5F5", dash="dash", width=2),
+    "TC-OS-SLR1": dict(color="#1E88E5", dash="dash", width=3),
+    "TC-OS-SLR4": dict(color="#0D47A1", dash="dash", width=4),
+    "Combined-Base": dict(color="#FFB74D", dash="solid", width=2),
+    "Combined-SLR1": dict(color="#F57C00", dash="solid", width=3),
+    "Combined-SLR4": dict(color="#D84315", dash="solid", width=4),
+    "Combined-BiasCorrected": dict(color="#D32F2F", dash="solid", width=4),
+    "Combined-SLR1-BiasCorrected": dict(color="#E65100", dash="solid", width=4),
+    "Combined-SLR4-BiasCorrected": dict(color="#880E4F", dash="solid", width=4),
+}
+
+LABEL_MAP = {
+    "SACS": "SACS_ADCIRC_CC_Full_set",
+    "SACS_RAS": "SACS_RAS_TC_506_storms",
+    "SWE": "SWE Baseline",
+    "Combined-BiasCorrected": "Combined-Base (Bias Corrected)",
+    "Combined-SLR1-BiasCorrected": "Combined-SLR1 (Bias Corrected)",
+    "Combined-SLR4-BiasCorrected": "Combined-SLR4 (Bias Corrected)",
+}
+
 with col_plot:
-    selected_row = gdf.iloc[st.session_state.selected_idx]
-    aep_raw = selected_row["aep"]
-    aep_data = json.loads(aep_raw) if isinstance(aep_raw, str) else aep_raw
-
-    def filter_aep(aep_dict, option):
-        if option == "All":
-            return aep_dict
-        filtered = {}
-        for k, v in aep_dict.items():
-            if k in ["SACS", "SACS_RAS", "SWE"]:
-                filtered[k] = v
-            elif k == "Combined-BiasCorrected" and option == "Base":
-                filtered[k] = v
-            elif k == "Combined-SLR1-BiasCorrected" and option == "SLR1":
-                filtered[k] = v
-            elif k == "Combined-SLR4-BiasCorrected" and option == "SLR4":
-                filtered[k] = v
-            elif option in k and "BiasCorrected" not in k:
-                filtered[k] = v
-        return filtered
-
-    aep_filtered = filter_aep(aep_data, scenario_option)
-
-    COLOR_MAP = {
-        "SACS": dict(color="#000000", dash="solid", width=3),
-        "SACS_RAS": dict(color="#666666", dash="solid", width=3),
-        "NTC-Syn-Base": dict(color="#4CAF50", dash="dot", width=2),
-        "NTC-Syn-SLR1": dict(color="#2E7D32", dash="dot", width=3),
-        "NTC-Syn-SLR4": dict(color="#1B5E20", dash="dot", width=4),
-        "TC-OS-Base": dict(color="#42A5F5", dash="dash", width=2),
-        "TC-OS-SLR1": dict(color="#1E88E5", dash="dash", width=3),
-        "TC-OS-SLR4": dict(color="#0D47A1", dash="dash", width=4),
-        "Combined-Base": dict(color="#FFB74D", dash="solid", width=2),
-        "Combined-SLR1": dict(color="#F57C00", dash="solid", width=3),
-        "Combined-SLR4": dict(color="#D84315", dash="solid", width=4),
-        "Combined-BiasCorrected": dict(color="#D32F2F", dash="solid", width=4),
-        "Combined-SLR1-BiasCorrected": dict(color="#E65100", dash="solid", width=4),
-        "Combined-SLR4-BiasCorrected": dict(color="#880E4F", dash="solid", width=4),
-    }
-
-    LABEL_MAP = {
-        "SACS": "SACS_ADCIRC_CC_Full_set",
-        "SACS_RAS": "SACS_RAS_TC_506_storms",
-        "SWE": "SWE Baseline",
-        "Combined-BiasCorrected": "Combined-Base (Bias Corrected)",
-        "Combined-SLR1-BiasCorrected": "Combined-SLR1 (Bias Corrected)",
-        "Combined-SLR4-BiasCorrected": "Combined-SLR4 (Bias Corrected)",
-    }
-
+    # Safely Extract and Parse FEMA 100-Year BFE
     raw_bfe = selected_row.get("fema_bfe")
+
     try:
-        fema_bfe = float(raw_bfe) if raw_bfe is not None and not pd.isna(raw_bfe) else None
+        if raw_bfe is not None and not pd.isna(raw_bfe):
+            fema_bfe = float(raw_bfe)
+        else:
+            fema_bfe = None
     except (ValueError, TypeError):
         fema_bfe = None
 
@@ -250,11 +284,13 @@ with col_plot:
 
     fig = go.Figure()
 
+    # Plot Return Period Curves
     for label, data in aep_filtered.items():
         if not data:
             continue
 
         display_label = LABEL_MAP.get(label, label)
+
         parsed_points = [
             (float(k), float(v))
             for k, v in data.items()
@@ -268,7 +304,9 @@ with col_plot:
         x = [pt[0] for pt in parsed_points]
         y = [pt[1] for pt in parsed_points]
 
-        style = COLOR_MAP.get(label, dict(color="gray", dash="solid", width=2))
+        style = COLOR_MAP.get(
+            label, dict(color="gray", dash="solid", width=2)
+        )
 
         fig.add_trace(
             go.Scatter(
@@ -285,6 +323,7 @@ with col_plot:
             )
         )
 
+    # Add FEMA 100-Year BFE Horizontal Reference Line
     if fema_bfe is not None:
         fig.add_hline(
             y=fema_bfe,
@@ -296,8 +335,11 @@ with col_plot:
             annotation_font=dict(size=11, color="#9C27B0"),
         )
 
+    # Add vertical benchmark lines for key return periods
     for rp in [10, 100, 500, 1000]:
-        fig.add_vline(x=rp, line_dash="dash", line_color="gray", opacity=0.4)
+        fig.add_vline(
+            x=rp, line_dash="dash", line_color="gray", opacity=0.4
+        )
 
     fig.update_layout(
         template="plotly_white",
@@ -307,8 +349,34 @@ with col_plot:
             type="log",
             title="Return Period (years)",
             range=[np.log10(1), np.log10(10000)],
-            tickvals=[2, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 5000, 10000],
-            ticktext=["2", "5", "10", "25", "50", "100", "250", "500", "1000", "2000", "5000", "10000"],
+            tickvals=[
+                2,
+                5,
+                10,
+                25,
+                50,
+                100,
+                250,
+                500,
+                1000,
+                2000,
+                5000,
+                10000,
+            ],
+            ticktext=[
+                "2",
+                "5",
+                "10",
+                "25",
+                "50",
+                "100",
+                "250",
+                "500",
+                "1000",
+                "2000",
+                "5000",
+                "10000",
+            ],
             gridcolor="#E0E6ED",
         ),
         yaxis=dict(title="WSE (ft, NAVD88)", gridcolor="#E0E6ED"),
