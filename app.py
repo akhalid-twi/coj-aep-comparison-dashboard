@@ -12,6 +12,24 @@ from folium.plugins import FastMarkerCluster
 from sklearn.neighbors import BallTree
 from streamlit_folium import st_folium
 
+# Page configuration
+st.set_page_config(
+    page_title="COJ AEP Comparison Dashboard",
+    layout="wide",
+)
+
+# -----------------------------
+# Initialize Session State
+# -----------------------------
+if "selected_idx" not in st.session_state:
+    st.session_state.selected_idx = 0
+if "map_center" not in st.session_state:
+    st.session_state.map_center = [30.33218, -81.65565]  # Jacksonville, FL
+if "map_zoom" not in st.session_state:
+    st.session_state.map_zoom = 10
+if "map_render_key" not in st.session_state:
+    st.session_state.map_render_key = 0
+
 
 # -----------------------------
 # Load Data from Master Parquet (Cached)
@@ -29,6 +47,18 @@ def load_data():
 
 
 gdf = load_data()
+
+
+# -----------------------------
+# Build BallTree for Spatial Clicks
+# -----------------------------
+@st.cache_resource
+def build_spatial_tree(df):
+    coords_rad = np.radians(df[["lat", "lon"]].values)
+    return BallTree(coords_rad, metric="haversine")
+
+
+tree = build_spatial_tree(gdf)
 
 
 # -----------------------------
@@ -53,6 +83,19 @@ def load_fema_layer():
 
 
 fema_geojson = load_fema_layer()
+
+
+# -----------------------------
+# Global Scenario Controls
+# -----------------------------
+col_header, col_ctrl = st.columns([6, 2])
+with col_header:
+    st.title("COJ AEP Comparison Dashboard")
+with col_ctrl:
+    scenario_option = st.selectbox("Scenario", ["All", "Base", "SLR1", "SLR4"])
+
+# Create the two main side-by-side layout columns
+col_map, col_plot = st.columns([3, 2])
 
 
 # ==============================================================================
@@ -122,7 +165,7 @@ with col_map:
 
     folium.Marker(
         location=[sel_lat, sel_lon],
-        popup=f"Cell: {selected_row.cell_id}",
+        popup=f"Cell: {selected_row.get('cell_id', st.session_state.selected_idx)}",
         icon=folium.Icon(color="red", icon="info-sign"),
     ).add_to(m)
 
@@ -167,11 +210,13 @@ if map_data and map_data.get("last_clicked"):
         st.session_state.map_zoom = 14
         st.session_state.map_render_key += 1
         st.rerun()
+
 # ==============================================================================
 # PLOT COMPONENT (Right Column)
 # ==============================================================================
 selected_row = gdf.iloc[st.session_state.selected_idx]
-aep_data = json.loads(selected_row["aep"])
+aep_raw = selected_row["aep"]
+aep_data = json.loads(aep_raw) if isinstance(aep_raw, str) else aep_raw
 
 
 def filter_aep(aep_dict, option):
@@ -205,29 +250,18 @@ aep_filtered = filter_aep(aep_data, scenario_option)
 COLOR_MAP = {
     "SACS": dict(color="#000000", dash="solid", width=3),
     "SACS_RAS": dict(color="#666666", dash="solid", width=3),
-    # "SWE": dict(color="#9E9E9E", dash="dashdot", width=2),
-    # NTC (green family)
     "NTC-Syn-Base": dict(color="#4CAF50", dash="dot", width=2),
     "NTC-Syn-SLR1": dict(color="#2E7D32", dash="dot", width=3),
     "NTC-Syn-SLR4": dict(color="#1B5E20", dash="dot", width=4),
-    # TC (blue family)
     "TC-OS-Base": dict(color="#42A5F5", dash="dash", width=2),
     "TC-OS-SLR1": dict(color="#1E88E5", dash="dash", width=3),
     "TC-OS-SLR4": dict(color="#0D47A1", dash="dash", width=4),
-    # Combined Uncorrected (orange/red family)
     "Combined-Base": dict(color="#FFB74D", dash="solid", width=2),
     "Combined-SLR1": dict(color="#F57C00", dash="solid", width=3),
     "Combined-SLR4": dict(color="#D84315", dash="solid", width=4),
-    # Combined Bias Corrected (distinct bold long-dashed lines)
-    "Combined-BiasCorrected": dict(
-        color="#D32F2F", dash="solid", width=4
-    ),  # Red
-    "Combined-SLR1-BiasCorrected": dict(
-        color="#E65100", dash="solid", width=4
-    ),  # Dark Orange
-    "Combined-SLR4-BiasCorrected": dict(
-        color="#880E4F", dash="solid", width=4
-    ),  # Deep Crimson
+    "Combined-BiasCorrected": dict(color="#D32F2F", dash="solid", width=4),
+    "Combined-SLR1-BiasCorrected": dict(color="#E65100", dash="solid", width=4),
+    "Combined-SLR4-BiasCorrected": dict(color="#880E4F", dash="solid", width=4),
 }
 
 LABEL_MAP = {
@@ -240,9 +274,7 @@ LABEL_MAP = {
 }
 
 with col_plot:
-    # -------------------------------------------------------------------------
     # Safely Extract and Parse FEMA 100-Year BFE
-    # -------------------------------------------------------------------------
     raw_bfe = selected_row.get("fema_bfe")
 
     try:
@@ -254,23 +286,22 @@ with col_plot:
         fema_bfe = None
 
     bfe_str = f"{fema_bfe:.2f} ft" if fema_bfe is not None else "N/A"
+    cell_id_val = selected_row.get("cell_id", st.session_state.selected_idx)
+    sacs_id_val = selected_row.get("sacs_id", "N/A")
 
     st.markdown(
-        f"**Cell:** {selected_row.cell_id} | **SACS ID:** {selected_row.sacs_id} | **FEMA BFE (100yr):** {bfe_str}"
+        f"**Cell:** {cell_id_val} | **SACS ID:** {sacs_id_val} | **FEMA BFE (100yr):** {bfe_str}"
     )
 
     fig = go.Figure()
 
-    # -------------------------------------------------------------------------
     # Plot Return Period Curves
-    # -------------------------------------------------------------------------
     for label, data in aep_filtered.items():
         if not data:
             continue
 
         display_label = LABEL_MAP.get(label, label)
 
-        # Parse return periods (x) and WSE (y) while filtering out nulls/NaNs
         parsed_points = [
             (float(k), float(v))
             for k, v in data.items()
@@ -303,14 +334,12 @@ with col_plot:
             )
         )
 
-    # -------------------------------------------------------------------------
     # Add FEMA 100-Year BFE Horizontal Reference Line
-    # -------------------------------------------------------------------------
     if fema_bfe is not None:
         fig.add_hline(
             y=fema_bfe,
             line_dash="dashdot",
-            line_color="#9C27B0",  # Distinct purple line
+            line_color="#9C27B0",
             line_width=2.5,
             annotation_text=f"FEMA 100-Yr BFE ({fema_bfe:.2f} ft)",
             annotation_position="top left",
