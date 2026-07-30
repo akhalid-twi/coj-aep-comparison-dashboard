@@ -228,7 +228,6 @@ if map_data and map_data.get("last_clicked"):
         st.session_state.map_zoom = 14
         
         # FIX 2 & 3: Removed map_render_key increment and st.rerun()
-
 # ==============================================================================
 # PLOT COMPONENT (Right Column)
 # ==============================================================================
@@ -292,18 +291,28 @@ LABEL_MAP = {
 }
 
 with col_plot:
-    # Safely Extract and Parse FEMA 100-Year BFE
+    # -------------------------------------------------------------------------
+    # 1. Safely Extract Water Mask and FEMA 100-Year BFE
+    # -------------------------------------------------------------------------
+    # Check if point is in open water mask
+    is_water = bool(
+        selected_row.get("is_in_watermask", False)
+        or (selected_row.get("watermask_flag") == 1)
+    )
+
     raw_bfe = selected_row.get("fema_bfe")
 
+    # Force fema_bfe to None if node is in water or if BFE value is missing/invalid
     try:
-        if raw_bfe is not None and not pd.isna(raw_bfe):
+        if not is_water and raw_bfe is not None and not pd.isna(raw_bfe):
             fema_bfe = float(raw_bfe)
         else:
             fema_bfe = None
     except (ValueError, TypeError):
         fema_bfe = None
 
-    bfe_str = f"{fema_bfe:.2f} ft" if fema_bfe is not None else "N/A"
+    # Format header string
+    bfe_str = f"{fema_bfe:.2f} ft" if fema_bfe is not None else "N/A (Water Node)"
     cell_id_val = selected_row.get("cell_id", st.session_state.selected_idx)
     sacs_id_val = selected_row.get("sacs_id", "N/A")
 
@@ -352,7 +361,9 @@ with col_plot:
             )
         )
 
-    # Add FEMA 100-Year BFE Horizontal Reference Line
+    # -------------------------------------------------------------------------
+    # 2. Add FEMA 100-Year BFE Reference Line ONLY if NOT a water node
+    # -------------------------------------------------------------------------
     if fema_bfe is not None:
         fig.add_hline(
             y=fema_bfe,
@@ -379,32 +390,10 @@ with col_plot:
             title="Return Period (years)",
             range=[np.log10(1), np.log10(10000)],
             tickvals=[
-                2,
-                5,
-                10,
-                25,
-                50,
-                100,
-                250,
-                500,
-                1000,
-                2000,
-                5000,
-                10000,
+                2, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 5000, 10000
             ],
             ticktext=[
-                "2",
-                "5",
-                "10",
-                "25",
-                "50",
-                "100",
-                "250",
-                "500",
-                "1000",
-                "2000",
-                "5000",
-                "10000",
+                "2", "5", "10", "25", "50", "100", "250", "500", "1000", "2000", "5000", "10000"
             ],
             gridcolor="#E0E6ED",
         ),
